@@ -18,7 +18,7 @@ A creature lives in a small 3D world. Where it looks, what it notices, what it f
 11. [Four chains of events, start to finish](#11-four-chains-of-events-start-to-finish)
 12. [Continuous learning and evolution](#12-continuous-learning-and-evolution)
 13. [Realism layer](#13-realism-layer)
-14. [Tech stack and repo layout](#14-tech-stack-and-repo-layout)
+14. [Engine, physics, motion and visuals](#14-engine-physics-motion-and-visuals)
 15. [Build order](#15-build-order)
 16. [Starting numbers](#16-starting-numbers)
 17. [Known failure modes](#17-known-failure-modes)
@@ -1005,39 +1005,170 @@ Small things that make it read as alive. All are consequences of states already 
 
 ---
 
-## 14. Tech stack and repo layout
+## 14. Engine, physics, motion and visuals
 
-**Recommended:**
+This build is the MVP prototype. The later high-quality version keeps the same mind and the same logic and replaces how things move and look: fluid motion, hyper-real rendering. The architecture exists to make that swap possible without rewriting anything else.
 
-- **Simulation core in Python.** World, body, senses, mind, memory, grammar, dataset generator and model training all in one language. It runs headless on a fixed tick with a seed, so it can be tested automatically and run faster than real time (the creature can live a week overnight).
-- **Viewer in the browser (Three.js)**, connected over a WebSocket. It renders the world and creature and shows the mind: gaze ray, salience bars, drive meters, current focus, thought stream and the knowledge graph. You move the player creature with the keyboard and speak through it with text or microphone. It also shows a discovery meter (facts found out of facts that exist in the ontology).
-- **Ontology in YAML.** The single source of truth.
-- **The mind does not depend on the renderer.** It takes percepts in and sends motor commands out, so the 3D side can later move to a game engine without touching the mind.
+### 14.1 Layers
 
 ```
-ontology/            entities, parts, attributes, words
-sim/
-  world/             scene graph, fields (light, smell, sound), weather, bug agents
-  player/            the player creature: body, smell, voice, controls
-  creature/
-    body.py
-    senses/          vision, smell, hearing, taste, touch, interoception
-    attention.py     salience competition
-    workspace.py     focus, working memory, broadcast, stream log
-    appraisal.py
-    drives.py
-    mind.py          behavior selection, goals
-    motor.py         eye / head / body controllers, reflexes
-    memory/          episodic, semantic, associative, lexicon, places
-    language/        intents, phrase bank, renderer, parser, gating, model wrapper
-    learning.py      traces, value updates
-    sleep.py         replay and consolidation
-  save.py
-dataset/             generator and outputs
-lm/                  tiny transformer: train and run
-viewer/              Three.js client
-tests/               behavior tests
+L5  MIND      attention · workspace · appraisal · drives · memory · language · learning
+              ▲ percept frames                              │ motor intents
+L4  SENSES    vision · smell · hearing · touch · taste     │   (built from world queries)
+              ▲                                             ▼
+L3  MOTOR     intents → targets: gaze point, desired velocity, foot plants, mouth actions, reflexes
+                                                            ▼
+L2  MOTION    targets → pose and forces                     ◄── SWAPPABLE
+              MVP: procedural animation on a rig + physics body
+              HQ:  motion matching / physics-driven character
+                                                            ▼
+L1  WORLD     semantic scene graph (part trees) + physics world + fields (light, smell, sound, wind)
+                                                            ▼
+L0  RENDER    meshes, materials, lighting, cameras, post     ◄── SWAPPABLE
+              MVP: Three.js     HQ: high-end renderer or engine
 ```
+
+**The rules that keep the code from getting scrambled:**
+
+1. **The mind never touches the engine.** It receives percept frames and sends motor intents. It never sees a mesh, a bone, a physics body or a pixel. Everything in L5 is plain code with no engine imports.
+2. **Intents, not animations.** The mind says "look at that leaf", "walk there slowly", "lick this". It never says "play walk clip" or "rotate neck bone". How the body carries out an intent belongs to L2, which is why L2 can be replaced.
+3. **The body reports what actually happened.** If a rock is in the way, the body stops and touch reports the contact. The mind finds out from its senses that the plan failed, the same way a real animal does.
+4. **One ID per thing, across all layers.** A semantic node (`tree_12/branch_3/leaf_27`) is linked by ID to its physics collider and its mesh. Swapping the mesh for a better one keeps the ID, so memories, names and measurements stay attached.
+5. **Rendering never affects the simulation.** L0 only reads. The simulation runs headless without it, at any speed.
+6. **If the creature can see it move, it moves in the simulation.** Leaf flutter, grass sway and branch bend are computed in L1 (cheap analytic functions of wind and time), and both the shader and the vision sense read the same function. Never animate something only on the graphics card that the creature is supposed to perceive.
+7. **Senses query the world through one narrow interface:**
+
+   ```ts
+   interface WorldQuery {
+     raycast(from, dir, maxDist): Hit | null      // occlusion, touch probes
+     visibleNodes(eye, fov): VisibleNode[]        // nodes in view, with angle, distance, light
+     node(id): SemanticNode                       // part tree, looks, relations, properties
+     contacts(bodyId): Contact[]                  // force, point, material
+     sampleField(kind, position): FieldValue      // light, smell, sound, wind, temperature
+     time(): WorldTime
+   }
+   ```
+
+   Moving the high-quality version to a different engine means implementing this interface and L2/L0 for that engine. L3–L5 and the ontology move over unchanged.
+
+### 14.2 Physics
+
+Physics is part of the world, not decoration. The same physical properties feed motion, the senses and damage.
+
+| Element | MVP approach |
+|---|---|
+| Engine | Rapier (WASM build): rigid bodies, colliders, joints, contact events. Runs in the browser and in Node. |
+| Step | Fixed 60 Hz with a seeded random generator, so runs are repeatable and can be fast-forwarded headless. Rendering interpolates between steps. |
+| Gravity and collisions | Fruit, rocks, sticks, seeds, bugs and both creatures are physical. Things fall, roll, bounce and come to rest. |
+| Materials | Each material in the ontology has friction, bounciness, hardness, sharpness and density. Physics uses them for motion, touch uses them for what it feels, and damage uses them for how much a hit hurts. One value, three uses. |
+| Light debris | Falling leaves and petals are cheap particles with drag and flutter. A particle becomes a full rigid body only when something interacts with it. |
+| Water | A volume with buoyancy and drag. Objects float or sink by density; the creature gets wet; visual ripples come from contacts. |
+| Wind | One wind field drives forces on light objects, the flutter function for leaves and grass, and smell drift. What it sees moving and where the smell goes always agree. |
+| Contacts | Every contact event goes to the touch sense with force, point and material, and to damage. |
+| Sleeping | Bodies at rest go to sleep and cost nothing until disturbed. |
+
+**Lazy detail.** Fine detail is materialized only where someone can sense it. Within sense range of the creature or the player, individual leaves, ant legs and pebbles exist as semantic nodes with colliders. Farther away they exist only as a seed and a count, drawn with instancing. Seeds are deterministic, so the leaf it inspected yesterday is the same leaf when it comes back. This is the fractal principle applied to performance.
+
+### 14.3 Motion (MVP: procedural)
+
+Procedural animation driven by physics looks alive, reacts to anything, and is light enough to run anywhere. The creature's body is a physics body pushed by controller forces toward the desired velocity from L3, so it collides and gets knocked around for real. The rig is posed on top of it every frame:
+
+- **Feet plant and stay planted.** Each foot finds the ground with a raycast and is placed by inverse kinematics, then held still while the body moves over it. Sliding feet are the first thing that makes a character look fake.
+- **Gait by speed:** walk, trot, run, each with its own foot timing, blended as speed changes.
+- **Body follows the ground.** Height and tilt follow the terrain under the feet. The spine bends into turns. It leans into acceleration.
+- **Secondary motion on springs:** ears, tail, belly, whiskers lag and settle.
+- **Breathing:** chest rise rate follows arousal; sniffing comes in quick bursts.
+- **Head stabilization:** the head stays steady while the body bobs, like real animals.
+- **Reflexes as impulses:** a startle is a sharp spring impulse through the whole body, a flinch is a recoil away from the contact point.
+- **A few authored clips** only for actions procedural motion does badly (licking, chewing, digging, shaking off water), blended in and out over the procedural pose.
+
+**High-quality path, later:** motion matching from real animal motion capture, or a fully physics-simulated character whose muscles are driven by a learned controller. Either takes the same targets from L3.
+
+### 14.4 The eyes
+
+The eyes carry most of the sense that someone is in there, so they get the most care.
+
+**Construction:**
+
+- Separate eyeball meshes with a white, an iris with visible depth (refraction or parallax shader), a pupil whose size is a live parameter, and a wet clear cornea that shows a bright highlight of the sky or sun.
+- Upper and lower lids as their own bones. The upper lid follows the eye up and down, as real lids do.
+- Blink: the lid closes fast (~100 ms) and opens slower (~150–200 ms). Blink timing comes from the eye state in 5.2.
+
+**Movement, from the eye state in 5.2:**
+
+- **Saccades** follow real eye kinematics. Duration grows with distance (about 21 ms + 2.2 ms per degree), speed peaks mid-jump, and there is a slight overshoot and settle.
+- **Microsaccades and drift** during fixation, so the eyes are never perfectly still.
+- **Smooth pursuit** when tracking, with small catch-up jumps.
+- **Vergence:** both eyes turn inward for close targets. Inspecting an ant from 4 cm, it goes slightly cross-eyed.
+- **Eye-head coordination:** the eyes move first and the head follows 50–100 ms later. As the head turns, the eyes counter-rotate to stay on the target.
+- **Pupils** widen in low light and with arousal.
+
+### 14.5 Cameras
+
+| Camera | What it shows |
+|---|---|
+| Creature's eyes | Positioned between its eyes and pointed where it is actually looking, so saccades and pursuit are seen from inside. Peripheral blur and color loss follow the acuity curve and light level from 5.1, so you see roughly what it can resolve. Optional overlays: lock reticle, outlines on resolved parts, salience heat map. A stabilized mode smooths the saccades, since raw eye motion is hard to watch for long. |
+| Player first person | Through the player creature's eyes. |
+| Player third person | Follow camera behind the player creature, with collision so it doesn't clip through trees. |
+| Free observer | Fly anywhere, orbit any object, pause, slow motion, step frame by frame, fast-forward. Click anything to open the inspector. |
+| Picture-in-picture | The creature's-eye view in a corner while using any other camera. |
+
+**The inspector** shows a clicked object's part tree, looks, relations and properties, with the parts the creature has measured highlighted and the unmeasured ones grayed out. Clicking the creature shows its live state: drives, feelings, current focus, salience bars, thought stream, knowledge graph, and the discovery meter (facts found out of facts that exist).
+
+### 14.6 Art direction
+
+**Look: a nature macro documentary.** The world is seen at the scale of a 12 cm animal, so the reference is macro nature photography: big soft sunlight, shallow depth of field in third person, dew on leaves, dust in sunbeams, bugs that look like real bugs. This look reads as real at modest cost, because macro images are mostly about light, materials and focus rather than huge polygon counts.
+
+| Asset | How it is made |
+|---|---|
+| The creature | Designed and sculpted in Blender, retopologized to about 15–25k triangles, normal and detail maps baked from the sculpt, physically based textures, fur from shells and cards. |
+| The rig | Named bones that match the ontology's body parts: spine chain, neck, head, jaw, tongue chain, two bones per ear, upper and lower lids per eye, eyes, nostrils, tail chain, four legs with toes. Blend shapes for squint, nostril flare, mouth shapes and ears flattening. |
+| Bugs | Sculpted and rigged the same way, small, with procedural gaits for their legs. |
+| Trees, bushes, flowers, grass | Generated from seeds by branching rules. The generator outputs the mesh and the part tree with its relations from the same process, so what is drawn and what can be discovered can never disagree. |
+| Ground, rock, water, sky | Physically based materials and photographic textures (free CC0 libraries such as Poly Haven for ground, rock and sky lighting), blended by height and wetness. |
+| Lighting | Sun with soft shadows, sky light, atmospheric haze, ambient occlusion, a full day/night cycle, firefly glow at night. |
+| Format | glTF 2.0 binary (.glb) with compressed geometry and textures. |
+
+### 14.7 Runs on any computer
+
+**Target:** 60 fps at Medium on a five-year-old laptop with integrated graphics, 30 fps at Low, more at High on a gaming machine.
+
+| Budget | Approach |
+|---|---|
+| Rendering | WebGPU when available, WebGL2 fallback. Instancing for grass, leaves and pebbles. Level-of-detail meshes for everything. One cascaded sun shadow. Quality presets. |
+| Physics | Under about 300 active bodies; everything else asleep or lazy (14.2). |
+| Mind | Runs in a Web Worker at 15 Hz on its own core, so thinking never stutters the frame rate. |
+| Language model | A few million parameters, run with ONNX Runtime Web in a worker, only when it is about to speak. |
+| Install | Nothing. It opens in a browser. A desktop wrapper can come later. |
+
+### 14.8 Tech stack and repo layout
+
+**One language for the whole simulation: TypeScript.** Physics, senses and the mind all have to share one world state 60 times a second. Splitting them across Python and the browser would mean either running physics twice or sending every raycast over a network socket. With TypeScript, the same code runs in the browser for viewing and in Node for headless fast-forward runs, tests, and logging training data.
+
+Python is used only offline, for dataset generation and training the language model, which is exported to ONNX and run in the browser.
+
+```
+ontology/                 YAML: entities, parts, looks, relations, materials, words
+packages/
+  protocol/               shared types: PerceptFrame, MotorIntent, IDs, WorldQuery
+  mind/                   L5: attention, workspace, appraisal, drives, mind, memory,
+                              language, learning, sleep (no engine imports)
+  senses/                 L4: builds percept frames through WorldQuery
+  motor/                  L3: intents → targets, reflexes
+  motion-procedural/      L2: IK, gaits, eyes, springs, clip blending
+  world/                  L1: scene graph, Rapier physics, fields, weather, bugs,
+                              plant generators, lazy detail, WorldQuery implementation
+  render-three/           L0: Three.js scene, materials, lighting, post, cameras
+  app/                    browser app: cameras, inspector, player controls, voice/text input
+  headless/               Node runner: fast-forward lives, behavior tests, corpus logging
+assets/
+  source/                 Blender files
+  export/                 .glb models, textures
+lm/                       Python: dataset generation, training, ONNX export
+tests/
+```
+
+**What changes for the high-quality version:** `motion-procedural` and `render-three` are replaced. If it moves to a different engine, `world` gets a new `WorldQuery` implementation there and the mind runs alongside it, speaking the same `protocol` messages. `mind`, `senses`, `motor`, `protocol` and the ontology stay as they are.
 
 ---
 
@@ -1047,8 +1178,9 @@ Each stage is usable on its own and has a test that defines "done".
 
 | # | Build | Done when |
 |---|---|---|
-| 1 | Ontology loader, world tick, basic viewer. A few entities: ground, tree, bush, pond, ant. Creature as a simple body walking around. | It can be watched in a browser, and ten simulated minutes run headless in seconds. |
-| 2 | Eyes: visibility model, salience, scan / lock / pursue / release, gaze overlay. | With nothing moving, fixations last 200–600 ms and spread over the scene. A butterfly crossing gets locked most of the time, not every time. After release the eyes do not snap back. |
+| 0 | Art foundation: creature design, sculpt and rig; terrain and ground materials; generated tree and grass; sun and sky lighting. | A still frame from the third-person camera reads as a nature macro shot, not a game prototype. |
+| 1 | Layer skeleton (14.1), ontology loader, world with Rapier physics, renderer, all cameras and the inspector. Player creature walking with procedural motion. A few entities: ground, tree, bush, pond, rocks, ant. | Fruit falls, rolls and settles. Feet don't slide. It runs at 60 fps on an integrated-graphics laptop. Ten simulated minutes run headless in seconds. The `mind` package has no engine imports. |
+| 2 | Eyes: visibility model, salience, scan / lock / pursue / release, rendered eyeballs and lids, eye-head coordination, the creature's-eye camera. | With nothing moving, fixations last 200–600 ms and spread over the scene. A butterfly crossing gets locked most of the time, not every time. After release the eyes do not snap back. Watching its face, you can tell what it is looking at. |
 | 3 | Body, drives, reflexes, mouth. Hunger, thirst, pain, tasting. | Left alone it gets hungry, tastes things, finds the berries and survives a day. Time-to-dodge a repeated hazard shortens. |
 | 4 | Memory, measurements, concepts, naming, thought stream (grammar only). | First tree is named once. Second tree is recognized, not renamed. Naming thoughts describe and name only the parts that were measured. The knowledge graph holds only what it got close enough to notice. |
 | 5 | Smell, hearing, association and recall. | The smell of hidden berries draws it in and triggers a recall thought. It turns toward sounds. After one sting it flinches at buzzing. |
@@ -1057,7 +1189,7 @@ Each stage is usable on its own and has a test that defines "done".
 | 8 | Day/night, weather, shelter, sleep and consolidation. | It heads for shelter before dark and remembers yesterday after sleeping. |
 | 9 | Generations. | Later generations survive longer from birth than the first. |
 
-Stages 1–4 are enough for the tree-and-leaf scenario end to end.
+Stages 0–4 are enough for the tree-and-leaf scenario end to end. The art keeps improving alongside every stage after 0.
 
 ---
 
@@ -1067,7 +1199,11 @@ All of these are starting points to be tuned by watching the creature.
 
 | Parameter | Value |
 |---|---|
-| Fast loop / slow loop | 60 Hz / 15 Hz |
+| Fast loop (physics, motion, eyes) / slow loop (mind) | 60 Hz / 15 Hz |
+| Saccade duration | ~21 ms + 2.2 ms per degree |
+| Blink close / open | ~100 ms / 150–200 ms |
+| Head lag behind eyes | 50–100 ms |
+| Active physics bodies | under ~300 |
 | Field of view | 140° × 100° |
 | Acuity half-point | 2.5° off-center |
 | Detect / identify thresholds | 0.3° / 2° effective |
@@ -1101,13 +1237,19 @@ All of these are starting points to be tuned by watching the creature.
 | Fear snowballing until it never leaves shelter | Harm values capped, slow unlearning, hunger eventually outweighs fear |
 | Staring forever at one thing | Interest always drains; sampled maximum dwell |
 | Too many tunable numbers | Every state is visible in the viewer; behavior tests catch regressions |
+| Motion code leaking into the mind | The `mind` package may not import engine, physics or render code; checked in the build |
+| Something moves on screen that the creature can't perceive, or the reverse | Every perceivable motion is computed in the world layer (14.1, rule 6) |
+| Feet sliding, floaty movement | Planted-foot IK, physics-driven body, ground-following (14.3) |
+| Creature's-eye camera is nauseating | Stabilized mode by default; raw mode for analysis |
+| Frame rate drops on weak machines | Lazy detail, instancing, quality presets, mind and language model in workers |
 
 ---
 
 ## 18. Open decisions
 
-1. **Stack.** Python core with a browser viewer is the recommendation. A game engine for the 3D side is the alternative if visual fidelity becomes the priority early.
-2. **The creature's form.** The blueprint assumes a small four-legged animal about 12 cm long with forward-facing eyes, movable ears, a nose and a tongue. Any body with those parts works.
+1. **Stack.** TypeScript with Rapier and Three.js, running in the browser, is the recommendation (14.8). The alternative is a game engine such as Godot for the MVP: more built-in tooling, but heavier to ship and harder to run headless at high speed.
+2. **The creature's form.** The blueprint assumes a small four-legged animal about 12 cm long with forward-facing eyes, movable ears, a nose and a tongue. This has to be settled before stage 0, because the sculpt and rig depend on it.
 3. **How much inner voice is shown.** Always-visible thought stream, or thoughts only when it speaks aloud.
 4. **Voice.** The phrase bank will be written in the casual register used in the examples above unless a different one is wanted.
 5. **How much pretrained knowledge may surface.** The design lets it reason from pretraining as long as it marks that as a guess. The stricter option is to allow only reasoning that starts from something it has seen.
+6. **The player creature's form.** The same species as the creature, a different species, or something clearly different so it never confuses you with its own kind.
