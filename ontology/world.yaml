@@ -1,0 +1,476 @@
+# THE ONTOLOGY (blueprint law 3)
+# Every thing in the world is described once, here. This file decides what exists, how it looks, smells,
+# sounds, feels and tastes, how it is built from parts, how the parts relate, and which words belong to it.
+# The world spawns from it, the senses read it, and the dataset generator writes language from it.
+# The mind never reads this file. Everything the creature knows arrives through its senses.
+#
+# Part fields:
+#   words          names the world offers once the node is resolved closely enough
+#   coarse_words   names offered while it is only identified from far (optional)
+#   full_angle     effective angle (deg) needed before `words` replace `coarse_words`
+#   looks          innate perceptual primitive (see primitives below)
+#   attrs          color, texture, sizeWord
+#   relation       {type, to}: to = parent | ground | <sibling part key>
+#   needs          {angle, dwell_s, touch}: what it takes to notice this part
+#   touch / smell / taste / sound   per-sense properties, measured only by that sense
+#   material       physics + touch material
+#   define         reference definition used by the dataset generator (never by the mind)
+
+primitives:
+  looks:
+    round: [round]
+    round_flat: [round, flat]
+    oval_flat: [oval, flat]
+    skinny_line: [skinny, line]
+    thin_lines: [thin, lines]
+    line: [line]
+    thick_line: [thick, line]
+    tall_branching: [tall, branching]
+    bushy: [bushy, round]
+    lumpy: [lumpy]
+    dome: [round, dome]
+    segmented: [segmented]
+    pointy_lines: [skinny, pointy]
+    flat_wide: [flat, wide]
+    tube_hollow: [long, hollow]
+    tiny_hairs: [tiny, hairs]
+    flat_shiny: [flat, shiny]
+    furry_body: [furry, round]
+    dots: [dots]
+    topped_stalk: [skinny, topped]
+    flat_layers: [flat, layers]
+
+materials:
+  bark:   {friction: 0.9, bounce: 0.05, hardness: 0.7, sharpness: 0.0, density: 600}
+  leaf:   {friction: 0.7, bounce: 0.05, hardness: 0.05, sharpness: 0.0, density: 300}
+  berry:  {friction: 0.6, bounce: 0.2, hardness: 0.1, sharpness: 0.0, density: 1000}
+  nut:    {friction: 0.6, bounce: 0.35, hardness: 0.95, sharpness: 0.1, density: 1100}
+  rock:   {friction: 0.8, bounce: 0.15, hardness: 1.0, sharpness: 0.2, density: 2600}
+  fungus: {friction: 0.7, bounce: 0.1, hardness: 0.1, sharpness: 0.0, density: 500}
+  fur:    {friction: 0.8, bounce: 0.1, hardness: 0.2, sharpness: 0.0, density: 1000}
+  chitin: {friction: 0.5, bounce: 0.2, hardness: 0.5, sharpness: 0.1, density: 1100}
+  soil:   {friction: 0.9, bounce: 0.0, hardness: 0.3, sharpness: 0.0, density: 1500}
+  water:  {friction: 0.1, bounce: 0.0, hardness: 0.0, sharpness: 0.0, density: 1000}
+  petal:  {friction: 0.6, bounce: 0.05, hardness: 0.03, sharpness: 0.0, density: 300}
+
+entities:
+
+  tree:
+    words: [tree]
+    looks: tall_branching
+    attrs: {color: brown}
+    material: bark
+    smell: {sig: {earthy: 0.4, green: 0.3}, strength: 0.06, reach_m: 1.2}
+    affords: [shade]
+    define: a tall thing that grows out the ground with a trunk, branches and leaves
+    parts:
+      trunk:
+        words: [trunk]
+        looks: thick_line
+        attrs: {color: brown}
+        relation: {type: sticks_out_of, to: ground}
+        needs: {angle: 3}
+        material: bark
+        touch: {texture: rough, hardness: hard, temperature: cool}
+        parts:
+          bark:
+            words: [bark]
+            looks: flat_layers
+            attrs: {color: brown, texture: rough}
+            relation: {type: around, to: parent}
+            needs: {angle: 5, dwell_s: 0.5}
+            touch: {texture: rough, hardness: hard}
+            taste: {sig: {bitter: 0.6}, nutrition: 0.0}
+            parts:
+              cracks:
+                words: [cracks]
+                looks: thin_lines
+                attrs: {color: brown}
+                relation: {type: on_top_of, to: parent}
+                needs: {angle: 12, dwell_s: 1.0}
+      branch:
+        words: [branch]
+        looks: line
+        attrs: {color: brown}
+        relation: {type: branches_from, to: trunk}
+        needs: {angle: 2.5}
+        touch: {texture: rough, hardness: hard}
+        parts:
+          leaf: &leaf
+            words: [leaf]
+            looks: oval_flat
+            attrs: {color: green, texture: smooth}
+            relation: {type: attached_to, to: parent}
+            needs: {angle: 2}
+            motion: flutter
+            material: leaf
+            smell: {sig: {green: 0.6}, strength: 0.02, reach_m: 0.3}
+            touch: {texture: smooth, hardness: soft, temperature: cool}
+            taste: {sig: {bitter: 0.5}, nutrition: 0.01}
+            sound: {sig: {pitch: 0.7, loudness: 0.1, buzz: 0.5, duration: 0.2}}
+            define: a flat green thing that grows on branches
+            parts:
+              stem:
+                words: [stem]
+                looks: skinny_line
+                attrs: {color: green}
+                relation: {type: runs_through, to: parent}
+                needs: {angle: 6, dwell_s: 0.3}
+                touch: {texture: smooth, hardness: firm}
+                define: the skinny line that goes through the middle of a leaf
+              veins:
+                words: [veins]
+                looks: thin_lines
+                attrs: {color: green}
+                relation: {type: branches_from, to: stem}
+                needs: {angle: 10, dwell_s: 0.8}
+                define: the thin lines that come off the stem of a leaf
+      nut:
+        words: [nut]
+        looks: round
+        attrs: {color: brown, texture: smooth}
+        relation: {type: attached_to, to: branch}
+        needs: {angle: 2}
+        material: nut
+        touch: {texture: smooth, hardness: hard}
+        taste: {sig: {bitter: 0.7}, nutrition: 0.0}
+        sound: {sig: {pitch: 0.4, loudness: 0.6, onset: 1.0, duration: 0.1}}
+        define: a hard round thing that falls from trees
+
+  leaf:          # a leaf that has fallen and blows across the ground
+    <<: *leaf
+    relation: {type: touching, to: ground}
+
+  nut:           # a nut that has fallen
+    words: [nut]
+    looks: round
+    attrs: {color: brown, texture: smooth}
+    needs: {angle: 2}
+    material: nut
+    touch: {texture: smooth, hardness: hard, temperature: cool}
+    taste: {sig: {bitter: 0.7}, nutrition: 0.0}
+    sound: {sig: {pitch: 0.4, loudness: 0.6, onset: 1.0, duration: 0.1}}
+    define: a hard round thing that falls from trees
+    parts:
+      cap:
+        words: [cap]
+        looks: dome
+        attrs: {color: brown, texture: rough}
+        relation: {type: on_top_of, to: parent}
+        needs: {angle: 6, dwell_s: 0.4}
+
+  bush:
+    words: [bush]
+    looks: bushy
+    attrs: {color: green}
+    smell: {sig: {sweet: 0.6, green: 0.3}, strength: 0.25, reach_m: 2.5}
+    affords: [cover]
+    define: a short round plant full of leaves
+    parts:
+      branch:
+        words: [branch]
+        looks: line
+        attrs: {color: brown}
+        relation: {type: sticks_out_of, to: ground}
+        needs: {angle: 3}
+        touch: {texture: rough, hardness: firm}
+        parts:
+          leaf: *leaf
+          berry:
+            words: [berry]
+            looks: round
+            attrs: {color: red, texture: shiny}
+            relation: {type: attached_to, to: parent}
+            needs: {angle: 1.0}
+            material: berry
+            smell: {sig: {sweet: 0.9}, strength: 0.08, reach_m: 0.6}
+            touch: {texture: smooth, hardness: soft, wetness: juicy}
+            taste: {sig: {sweet: 0.9, sour: 0.2}, nutrition: 0.16}
+            define: a small shiny red round thing that grows on bushes and is sweet
+            parts:
+              seeds:
+                words: [seeds]
+                looks: dots
+                attrs: {color: yellow}
+                relation: {type: on_top_of, to: parent}
+                needs: {angle: 14, dwell_s: 1.0}
+                define: the tiny dots on the outside of a berry
+
+  flower:
+    words: [flower]
+    looks: topped_stalk
+    attrs: {color: purple}
+    smell: {sig: {floral: 0.9, sweet: 0.3}, strength: 0.12, reach_m: 1.2}
+    define: a plant with a skinny stem and bright petals on top
+    parts:
+      stalk:
+        words: [stalk, stem]
+        looks: skinny_line
+        attrs: {color: green}
+        relation: {type: sticks_out_of, to: ground}
+        needs: {angle: 2}
+        touch: {texture: smooth, hardness: soft}
+        taste: {sig: {bitter: 0.3}, nutrition: 0.01}
+      leaf:
+        <<: *leaf
+        relation: {type: attached_to, to: stalk}
+      petals:
+        words: [petals]
+        looks: round_flat
+        attrs: {color: purple, texture: smooth}
+        relation: {type: on_top_of, to: stalk}
+        needs: {angle: 2}
+        material: petal
+        smell: {sig: {floral: 1.0}, strength: 0.06, reach_m: 0.5}
+        touch: {texture: soft, hardness: soft}
+        taste: {sig: {sweet: 0.3, bitter: 0.2}, nutrition: 0.01}
+        define: the bright flat pieces on top of a flower
+      center:
+        words: [middle, center]
+        looks: round
+        attrs: {color: yellow, texture: fuzzy}
+        relation: {type: inside, to: petals}
+        needs: {angle: 5, dwell_s: 0.4}
+        touch: {texture: fuzzy}
+        taste: {sig: {sweet: 0.6}, nutrition: 0.02}
+
+  mushroom:
+    words: [mushroom]
+    looks: dome
+    attrs: {color: red}
+    material: fungus
+    smell: {sig: {earthy: 0.7, rot: 0.3}, strength: 0.1, reach_m: 0.8}
+    define: a soft thing with a round cap that grows out of dirt
+    parts:
+      cap:
+        words: [cap]
+        looks: dome
+        attrs: {color: red, texture: smooth}
+        relation: {type: on_top_of, to: stalk}
+        needs: {angle: 2}
+        touch: {texture: smooth, hardness: soft}
+        taste: {sig: {savory: 0.5, bitter: 0.3}, nutrition: 0.05, toxin: 0.6}
+        parts:
+          spots:
+            words: [spots]
+            looks: dots
+            attrs: {color: white}
+            relation: {type: on_top_of, to: parent}
+            needs: {angle: 5, dwell_s: 0.3}
+      stalk:
+        words: [stalk, stem]
+        looks: thick_line
+        attrs: {color: white}
+        relation: {type: sticks_out_of, to: ground}
+        needs: {angle: 2.5}
+        touch: {texture: smooth, hardness: soft}
+
+  grass:
+    words: [grass]
+    looks: pointy_lines
+    attrs: {color: green}
+    motion: sway
+    smell: {sig: {green: 0.5}, strength: 0.03, reach_m: 0.5}
+    touch: {texture: smooth, hardness: soft}
+    taste: {sig: {bitter: 0.25, sweet: 0.1}, nutrition: 0.045}
+    sound: {sig: {pitch: 0.6, loudness: 0.05, buzz: 0.6, duration: 0.5}}
+    define: lots of skinny green pointy things sticking out the ground
+    parts:
+      blade:
+        words: [blade]
+        looks: pointy_lines
+        attrs: {color: green}
+        relation: {type: sticks_out_of, to: ground}
+        needs: {angle: 4, dwell_s: 0.3}
+
+  rock:
+    words: [rock]
+    looks: lumpy
+    attrs: {color: gray, texture: rough}
+    material: rock
+    touch: {texture: rough, hardness: hard, temperature: cold}
+    taste: {sig: {salty: 0.1}, nutrition: 0.0}
+    sound: {sig: {pitch: 0.5, loudness: 0.5, onset: 1.0, duration: 0.1}}
+    define: a hard gray lumpy thing
+    parts:
+      moss:
+        words: [moss]
+        looks: flat_layers
+        attrs: {color: green, texture: fuzzy}
+        relation: {type: on_top_of, to: parent}
+        needs: {angle: 6, dwell_s: 0.6}
+        touch: {texture: fuzzy, hardness: soft, wetness: damp}
+        smell: {sig: {earthy: 0.5, wet: 0.3}, strength: 0.02, reach_m: 0.3}
+
+  pond:
+    words: [water]
+    looks: flat_shiny
+    attrs: {color: blue, texture: shiny}
+    material: water
+    smell: {sig: {wet: 0.9, earthy: 0.2}, strength: 0.3, reach_m: 4.0}
+    touch: {texture: wet, wetness: wet, temperature: cool}
+    taste: {sig: {}, nutrition: 0.0, hydration: 0.25}
+    sound: {sig: {pitch: 0.3, loudness: 0.08, rhythm: 0.6, duration: 1.0}}
+    define: a flat shiny place full of water you can drink
+    parts:
+      ripples:
+        words: [ripples]
+        looks: thin_lines
+        attrs: {color: blue}
+        relation: {type: on_top_of, to: parent}
+        needs: {angle: 8, dwell_s: 0.6}
+
+  log:
+    words: [log]
+    looks: tube_hollow
+    attrs: {color: brown, texture: rough}
+    material: bark
+    affords: [shelter]
+    smell: {sig: {earthy: 0.6, rot: 0.2}, strength: 0.08, reach_m: 1.0}
+    touch: {texture: rough, hardness: hard, temperature: cool}
+    define: an old fallen tree that is hollow inside, good to hide in
+    parts:
+      hole:
+        words: [hole]
+        looks: round
+        attrs: {color: black}
+        relation: {type: inside, to: parent}
+        needs: {angle: 3}
+      bark:
+        words: [bark]
+        looks: flat_layers
+        attrs: {color: brown, texture: rough}
+        relation: {type: around, to: parent}
+        needs: {angle: 5, dwell_s: 0.5}
+        touch: {texture: rough, hardness: hard}
+
+  ant:
+    words: [ant]
+    coarse_words: [bug]
+    full_angle: 4
+    looks: segmented
+    attrs: {color: black, texture: shiny}
+    motion: crawl
+    material: chitin
+    smell: {sig: {sharp: 0.6}, strength: 0.01, reach_m: 0.15}
+    touch: {texture: hard, hardness: tiny}
+    taste: {sig: {sour: 0.8}, nutrition: 0.01}
+    define: a tiny black bug in pieces with six legs that walks in lines
+    parts:
+      head:
+        words: [head]
+        looks: round
+        attrs: {color: black}
+        relation: {type: attached_to, to: parent}
+        needs: {angle: 1.2}
+      antenna:
+        count: 2
+        words: [antenna, feeler]
+        looks: skinny_line
+        attrs: {color: black}
+        relation: {type: attached_to, to: head}
+        needs: {angle: 1.0, dwell_s: 0.3}
+      leg:
+        count: 6
+        words: [legs, leg]
+        looks: skinny_line
+        attrs: {color: black}
+        relation: {type: attached_to, to: parent}
+        needs: {angle: 1.0, dwell_s: 0.3}
+        parts:
+          hair:
+            words: [hair, hairs]
+            looks: tiny_hairs
+            attrs: {color: brown}
+            relation: {type: on_top_of, to: parent}
+            needs: {angle: 3, dwell_s: 1.0}
+            define: tiny hairs all over an ant's legs
+
+  butterfly:
+    words: [butterfly]
+    coarse_words: [bug]
+    full_angle: 4
+    looks: flat_wide
+    attrs: {color: orange}
+    motion: flap
+    smell: {sig: {floral: 0.2}, strength: 0.01, reach_m: 0.2}
+    define: a bug with big flat colorful wings that flies around flowers
+    parts:
+      wings:
+        count: 2
+        words: [wings, wing]
+        looks: flat_wide
+        attrs: {color: orange, texture: smooth}
+        relation: {type: attached_to, to: parent}
+        needs: {angle: 2}
+        parts:
+          spots:
+            words: [spots]
+            looks: dots
+            attrs: {color: white}
+            relation: {type: on_top_of, to: parent}
+            needs: {angle: 6, dwell_s: 0.5}
+      body:
+        words: [body]
+        looks: skinny_line
+        attrs: {color: black}
+        relation: {type: attached_to, to: wings}
+        needs: {angle: 2}
+
+  visitor:       # the player creature (blueprint 3.6)
+    words: [visitor]
+    looks: furry_body
+    attrs: {color: gray, texture: fuzzy}
+    material: fur
+    motion: walk
+    smell: {sig: {musky: 0.8, sweet: 0.1}, strength: 0.35, reach_m: 3.0}
+    touch: {texture: fuzzy, hardness: soft, temperature: warm}
+    define: the big gray furry creature that talks
+    parts:
+      head:
+        words: [head]
+        looks: round
+        attrs: {color: gray}
+        relation: {type: attached_to, to: parent}
+        needs: {angle: 3}
+        parts:
+          eyes:
+            count: 2
+            words: [eyes, eye]
+            looks: round
+            attrs: {color: green, texture: shiny}
+            relation: {type: on_top_of, to: parent}
+            needs: {angle: 1.5, dwell_s: 0.3}
+          ears:
+            count: 2
+            words: [ears, ear]
+            looks: pointy_lines
+            attrs: {color: gray}
+            relation: {type: on_top_of, to: parent}
+            needs: {angle: 2}
+          nose:
+            words: [nose]
+            looks: round
+            attrs: {color: black, texture: shiny}
+            relation: {type: on_top_of, to: parent}
+            needs: {angle: 1.5, dwell_s: 0.3}
+      leg:
+        count: 4
+        words: [legs, leg]
+        looks: line
+        attrs: {color: gray}
+        relation: {type: attached_to, to: parent}
+        needs: {angle: 2}
+      tail:
+        words: [tail]
+        looks: line
+        attrs: {color: gray, texture: fuzzy}
+        relation: {type: attached_to, to: parent}
+        needs: {angle: 2}
+      fur:
+        words: [fur]
+        looks: tiny_hairs
+        attrs: {color: gray, texture: fuzzy}
+        relation: {type: around, to: parent}
+        needs: {angle: 8, dwell_s: 0.6}
+        touch: {texture: fuzzy, hardness: soft, temperature: warm}

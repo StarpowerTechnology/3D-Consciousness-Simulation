@@ -1,0 +1,28 @@
+{
+  "name": "consciousness-sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A creature that perceives, attends, feels, remembers, discovers and talks inside a 3D world.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "headless": "tsx src/headless/run.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "check:layers": "tsx tools/check-layers.ts"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "0.19.3",
+    "three": "0.186.1",
+    "yaml": "2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.0",
+    "@types/three": "0.186.0",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vite": "7.3.7"
+  }
+}

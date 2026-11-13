@@ -2,6 +2,8 @@
 
 A creature lives in a small 3D world. Where it looks, what it notices, what it fears, what it wants, what it remembers and what it says all come out of interacting state updates, not scripts. The target is behavior that reads as conscious: it attends, reacts, learns, discovers things, and tells you about them in its own words. This document specifies the mechanisms.
 
+**Status:** the MVP prototype (build stages 0–6 and 8, with a procedural language layer in place of stage 7's model) is implemented in this repository. See [README.md](README.md) to run it.
+
 ## Contents
 
 0. [The five laws](#0-the-five-laws)

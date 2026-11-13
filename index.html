@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Consciousness Simulation</title>
+    <link rel="stylesheet" href="/src/app/style.css" />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="loading">waking up…</div>
+
+    <header id="top">
+      <div class="brand">Consciousness Simulation</div>
+      <nav id="cams">
+        <button data-cam="eyes" title="1">Its eyes</button>
+        <button data-cam="follow" title="2">Follow it</button>
+        <button data-cam="fp" title="3">You · 1st</button>
+        <button data-cam="tp" title="4">You · 3rd</button>
+        <button data-cam="free" title="5">Free</button>
+      </nav>
+      <div id="clock"></div>
+      <div id="speed">
+        <button id="pause" title="P">❚❚</button>
+        <button id="slower" title="[">−</button>
+        <span id="scale">1×</span>
+        <button id="faster" title="]">+</button>
+      </div>
+    </header>
+
+    <aside id="stream">
+      <h2>Stream of thought</h2>
+      <ol id="thoughts"></ol>
+    </aside>
+
+    <aside id="mind">
+      <h2>Mind</h2>
+      <div class="row"><span class="k">aware of</span><span id="focus" class="v">—</span></div>
+      <div class="row"><span class="k">doing</span><span id="behavior" class="v">—</span></div>
+      <div class="row"><span class="k">eyes</span><span id="gaze" class="v">—</span></div>
+      <div id="interest" class="bar"><i></i></div>
+      <h3>Drives</h3>
+      <div id="drives"></div>
+      <h3>Feelings</h3>
+      <div id="feelings"></div>
+      <h3>Body</h3>
+      <div id="bodystate"></div>
+      <h3>Drawing its eye</h3>
+      <ol id="salience"></ol>
+      <h3>Discovered <span id="disc"></span></h3>
+      <div id="named"></div>
+      <button id="kbtn">Knowledge graph (K)</button>
+    </aside>
+
+    <section id="inspector" hidden>
+      <header><span id="insTitle"></span><button id="insClose">×</button></header>
+      <p class="legend"><span class="m">measured by the creature</span> · <span class="u">not yet noticed</span></p>
+      <ul id="insTree"></ul>
+    </section>
+
+    <section id="knowledge" hidden>
+      <header><span>What it knows</span><button id="kClose">×</button></header>
+      <ul id="kList"></ul>
+    </section>
+
+    <form id="talk">
+      <input id="say" autocomplete="off" placeholder="Say something as the visitor… (Enter)" />
+    </form>
+    <div id="hint">
+      <b>1–5</b> cameras · <b>WASD</b> move · <b>mouse</b> look (click to lock) · <b>Space</b> jump · <b>E</b> pick up/drop · <b>F</b> throw ·
+      <b>Enter</b> talk · <b>click</b> inspect · <b>V</b> its view inset · <b>R</b> raw eye motion · <b>H</b> hide panels
+    </div>
+    <div id="pipLabel">through its eyes</div>
+    <script type="module" src="/src/app/main.ts"></script>
+  </body>
+</html>
