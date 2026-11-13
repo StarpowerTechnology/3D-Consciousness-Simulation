@@ -5,7 +5,7 @@ import { add, clamp, dist, dist2d, norm, rotY, scale, sub, v3, type V3 } from '.
 import { clockAt, flutter, sunAt, windAt, toVec, SMELL_DIMS, SOUND_DIMS, type Clock, type Sun, type Wind, type SoundEvent } from './fields';
 import { NodeRegistry, type NodeInst } from './nodes';
 import { Physics, type Contact } from './physics';
-import { buildTerrainMesh, terrainHeight, POND, WATER_LEVEL } from './terrain';
+import { buildTerrainMesh, terrainHeight, POND, WATER_LEVEL, SHORE_R } from './terrain';
 import { spawnWorld } from './spawn';
 import { AntColony, Butterflies } from './agents';
 
@@ -333,6 +333,6 @@ export class World {
   /** Closest point on the pond's water to p, for drinking. */
   waterEdgeDistance(p: V3): number {
     const d = Math.hypot(p.x - POND.x, p.z - POND.z);
-    return Math.max(0, d - POND.r * 0.82);
+    return Math.max(0, d - SHORE_R);
   }
 }

@@ -45,3 +45,23 @@ test('body parts stay attached: tail root and hips stay inside the body, tail li
   assert.ok(worstHip < 0.85, `a hip left the body (ellipsoid measure ${worstHip.toFixed(2)})`);
   assert.ok(worstLink < 0.01, `a tail link stretched by ${(worstLink * 100).toFixed(1)}%`);
 });
+
+test('drinking at the pond: the creature reaches the water and its body stays above the surface', async () => {
+  const { POND, WATER_LEVEL } = await import('../src/world/terrain');
+  const sim = await makeSim(2);
+  sim.creature.bio.hydration = 0.15; // thirsty from the start
+  const h0 = sim.creature.bio.hydration;
+  let lowest = Infinity, nearPond = 0;
+  for (let i = 0; i < 60 * 240 && sim.creature.bio.hydration < 0.5; i++) {
+    sim.step();
+    const p = sim.creature.pose.root;
+    if (Math.hypot(p.x - POND.x, p.z - POND.z) < POND.r * 1.2) {
+      nearPond++;
+      lowest = Math.min(lowest, p.y - WATER_LEVEL);
+    }
+  }
+  assert.ok(sim.creature.bio.hydration > h0 + 0.1, `it never drank (hydration ${sim.creature.bio.hydration.toFixed(2)})`);
+  assert.ok(nearPond > 0, 'it never came to the pond');
+  // the body centre sits ~3.6 cm above the ground; it must never sink below the water line
+  assert.ok(lowest > 0.015, `the body went under the water (centre ${(lowest * 100).toFixed(1)} cm above the surface)`);
+});

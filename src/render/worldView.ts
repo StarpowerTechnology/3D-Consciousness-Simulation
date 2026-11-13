@@ -709,6 +709,35 @@ export class WorldView {
     void dt;
   }
 
+  // ---------------------------------------------------------------- underwater
+
+  private savedFog: { color: THREE.Color; density: number } | null = null;
+
+  /** Is this point under the pond's surface? */
+  isUnderwater(p: THREE.Vector3): boolean {
+    return p.y < WATER_LEVEL - 0.002 && Math.hypot(p.x - POND.x, p.z - POND.z) < POND.r * 1.02;
+  }
+
+  /**
+   * Switch the scene to how it looks from under the water (dense teal haze, the surface seen from below) for one
+   * render, and back. Call with the camera position before each render; it restores itself when the camera is dry.
+   */
+  setUnderwater(on: boolean) {
+    const fog = this.scene.fog as THREE.FogExp2;
+    if (on && !this.savedFog) {
+      this.savedFog = { color: fog.color.clone(), density: fog.density };
+      const day = this.world.sun.ambient;
+      fog.color.setRGB(0.05 + 0.15 * day, 0.25 + 0.3 * day, 0.28 + 0.3 * day);
+      fog.density = 3.2;
+      (this.water.material as THREE.MeshPhysicalMaterial).opacity = 0.55;
+    } else if (!on && this.savedFog) {
+      fog.color.copy(this.savedFog.color);
+      fog.density = this.savedFog.density;
+      this.savedFog = null;
+      (this.water.material as THREE.MeshPhysicalMaterial).opacity = 0.8;
+    }
+  }
+
   /** Which node does a ray hit hit? */
   nodeOf(hit: THREE.Intersection): string | undefined {
     const o = hit.object as THREE.Object3D & { userData: any };

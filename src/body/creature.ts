@@ -148,9 +148,16 @@ export class CreatureBody {
       const av = this.avoid(p, desired, L.target);
       desired = { x: desired.x + av.x, z: desired.z + av.z };
     }
+    // reflex: if the body is ever past the shoreline, scramble straight back out (it cannot swim)
+    const inWater = w.waterEdgeDistance(p) === 0;
+    if (inWater) {
+      const pn = w.nodes.tops.find((n) => n.entity === 'pond')!;
+      const dx = p.x - pn.pos.x, dz = p.z - pn.pos.z, d = Math.hypot(dx, dz) || 1;
+      desired = { x: (dx / d) * topSpeed * 0.8, z: (dz / d) * topSpeed * 0.8 };
+    }
 
     // accelerate toward the desired velocity
-    const acc = 2.2 * dt;
+    const acc = (inWater ? 5 : 2.2) * dt;
     let nvx = v.x + clamp(desired.x - v.x, -acc, acc);
     let nvz = v.z + clamp(desired.z - v.z, -acc, acc);
     if (!hit) w.physics.setVel(this.handle, { x: nvx, y: v.y, z: nvz });
@@ -251,9 +258,13 @@ export class CreatureBody {
         az += (dz / (d || 1)) * push + (dx / (d || 1)) * push * 0.6;
       }
     }
-    // the water's edge: never walk in
-    const we = w.waterEdgeDistance({ x: look.x, y: 0, z: look.z });
-    if (we < 0.05) {
+    // the water's edge: never walk in. When the pond is what it is going to (to drink), it may walk right up to the
+    // shoreline with its paws dry; otherwise it keeps a look-ahead margin.
+    const drinking = !!target && target.startsWith('pond');
+    const speed = Math.hypot(this.vel.x, this.vel.z);
+    // the drinking margin grows with speed (braking distance), so it never runs in with momentum
+    const we = drinking ? w.waterEdgeDistance(p) - 0.015 - speed * 0.3 : w.waterEdgeDistance({ x: look.x, y: 0, z: look.z }) - 0.05;
+    if (we < 0) {
       const pn = w.nodes.tops.find((n) => n.entity === 'pond')!;
       const dx = look.x - pn.pos.x, dz = look.z - pn.pos.z, d = Math.hypot(dx, dz) || 1;
       ax += (dx / d) * sp * 1.5;

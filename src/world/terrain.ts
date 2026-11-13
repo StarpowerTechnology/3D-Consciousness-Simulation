@@ -8,6 +8,8 @@ export const INNER_SIZE = 16;
 export const TERRAIN_RES = 0.1; // metres between grid vertices
 export const POND = { x: 3.6, z: -3.0, r: 1.6, depth: 0.22 };
 export const WATER_LEVEL = -0.07;
+/** Where the ground meets the water. */
+export const SHORE_R = POND.r * 0.82;
 
 export function terrainHeight(x: number, z: number): number {
   let h = fbm2(x * 0.18, z * 0.18, 4, 3) * 0.35 + fbm2(x * 1.3, z * 1.3, 2, 11) * 0.015;
@@ -23,6 +25,12 @@ export function terrainHeight(x: number, z: number): number {
   const dp = Math.hypot(x - POND.x, z - POND.z);
   const bowl = 1 - smoothstep(POND.r * 0.35, POND.r * 1.15, dp);
   h = h * (1 - bowl) + (WATER_LEVEL - POND.depth) * bowl;
+  // the shoreline: ground meets the water exactly at SHORE_R, the edge the body and senses use for drinking.
+  // Without this, noise left the "edge" up to 8 cm under the surface and a drinking creature stood submerged.
+  if (dp < POND.r * 1.5) {
+    if (dp > SHORE_R) h = Math.max(h, WATER_LEVEL + 0.12 * Math.min(dp - SHORE_R, 0.33)); // a bank gentle enough to walk
+    else h = Math.min(Math.max(h, WATER_LEVEL - 0.2 * (SHORE_R - dp)), WATER_LEVEL - 0.05 * (SHORE_R - dp)); // a gentle beach into the water
+  }
   return h;
 }
 
