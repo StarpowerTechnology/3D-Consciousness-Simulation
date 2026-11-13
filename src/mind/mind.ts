@@ -105,8 +105,9 @@ export class Mind {
     const b = f.body;
     const d = this.drives;
     const night = f.time.hour >= 20 || f.time.hour < 6;
-    d.hunger = clamp01(((0.75 - b.energy) / 0.6) ** 1.5 * 1.2);
-    d.thirst = clamp01(((0.75 - b.hydration) / 0.6) ** 1.5 * 1.2);
+    // above 0.75 the need is zero (a negative base to a fractional power would be NaN)
+    d.hunger = clamp01(Math.max(0, (0.75 - b.energy) / 0.6) ** 1.5 * 1.2);
+    d.thirst = clamp01(Math.max(0, (0.75 - b.hydration) / 0.6) ** 1.5 * 1.2);
     d.rest = clamp01(b.fatigue * 1.1 + (night ? 0.45 : 0) + (f.time.ambientLight < 0.25 ? 0.2 : 0));
     d.comfort = clamp01(Math.abs(b.temperature - 0.5) * 1.6 + b.wet * 0.5 + (f.time.ambientLight < 0.15 && !f.proprio.inShelter ? 0.3 : 0));
     d.safety = clamp01(this.feelings.fear);

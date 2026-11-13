@@ -24,7 +24,7 @@ export interface RigDims {
 
 export const CREATURE_DIMS: RigDims = {
   scale: 1, bodyHeight: 0.036, headFwd: 0.05, headUp: 0.022, eyeFwd: 0.012, eyeUp: 0.006, eyeSide: 0.009,
-  hipSide: 0.016, hipFront: 0.028, hipRear: -0.026, hipDown: 0.004, legUpper: 0.019, legLower: 0.02, stride: 0.05,
+  hipSide: 0.0145, hipFront: 0.028, hipRear: -0.026, hipDown: 0.004, legUpper: 0.019, legLower: 0.02, stride: 0.05,
   tailLen: 0.085, tailBase: -0.05,
 };
 
@@ -131,19 +131,27 @@ export class Motion {
     };
   }
 
+  /**
+   * A point fixed to the body, in world space. Every attachment (hips, tail, neck, head) goes through this one
+   * transform, which matches the renderer's body rotation exactly (Euler YXZ: heading, -pitch, roll), so parts
+   * stay joined however the body tilts on a slope.
+   */
+  bodyPoint(local: V3, root: V3 = this.pose.root, heading = this.pose.heading, pitch = this.pose.bodyPitch, roll = this.pose.bodyRoll): V3 {
+    return bodyFrame(local, root, heading, pitch, roll);
+  }
+
   private hipWorld(i: number, root: V3, heading: number, crouch: number): V3 {
     const d = this.d;
     const side = i % 2 === 0 ? -1 : 1;
     const fz = i < 2 ? d.hipFront : d.hipRear;
-    const l = rotY({ x: side * d.hipSide, y: -d.hipDown - crouch * d.bodyHeight * 0.25, z: fz }, heading);
-    return { x: root.x + l.x, y: root.y + l.y, z: root.z + l.z };
+    return this.bodyPoint({ x: side * d.hipSide, y: -d.hipDown - crouch * d.bodyHeight * 0.25, z: fz }, root, heading);
   }
 
   /** Head centre for a given root, heading and head angles. */
   headPos(root: V3, heading: number, crouch: number, headDown: number): V3 {
     const d = this.d;
-    const l = rotY({ x: 0, y: d.headUp * (1 - 0.6 * headDown) - crouch * d.bodyHeight * 0.3, z: d.headFwd * (1 + 0.15 * headDown) }, heading);
-    return { x: root.x + l.x, y: root.y + l.y, z: root.z + l.z };
+    // the head rides on the neck, so it follows the body's pitch on slopes (roll is left to the neck)
+    return bodyFrame({ x: 0, y: d.headUp * (1 - 0.6 * headDown) - crouch * d.bodyHeight * 0.3, z: d.headFwd * (1 + 0.15 * headDown) }, root, heading, this.pose.bodyPitch, 0);
   }
 
   update(dt: number, inp: MotionInput): CreaturePose {
@@ -326,19 +334,21 @@ export class Motion {
     }
     p.earsFlat = inp.earsFlat;
 
-    // ---- tail: a verlet chain with stiffness, lagging behind the body
-    const base = { x: root.x + fw.x * d.tailBase, y: root.y + d.bodyHeight * 0.1, z: root.z + fw.z * d.tailBase };
+    // ---- tail: a verlet chain with stiffness, lagging behind the body.
+    // The base is anchored *inside* the rump through the body frame, so it can never pull away from the body;
+    // stiffness falls off toward the tip, so the root of the tail follows the spine and the tip trails.
     const seg = d.tailLen / 8;
-    this.tailPts[0] = base;
+    const anchorZ = d.tailBase * 0.88;
+    this.tailPts[0] = this.bodyPoint({ x: 0, y: d.bodyHeight * 0.12, z: anchorZ });
     for (let i = 1; i < this.tailPts.length; i++) {
       const cur = this.tailPts[i], prev = this.tailPrev[i];
       const vx = (cur.x - prev.x) * 0.9, vy = (cur.y - prev.y) * 0.9, vz = (cur.z - prev.z) * 0.9;
       this.tailPrev[i] = { ...cur };
       // rest shape: behind the body, slightly up, swaying
       const sway = Math.sin(this.t * 1.6 + i * 0.5) * 0.15 * (1 + inp.arousal);
-      const rest = rotY({ x: sway * i * seg * 0.3, y: (inp.tailUp * 0.6 - 0.15) * i * seg, z: d.tailBase - i * seg }, inp.heading);
-      const rp = { x: root.x + rest.x, y: root.y + d.bodyHeight * 0.1 + rest.y, z: root.z + rest.z };
-      let nx = cur.x + vx + (rp.x - cur.x) * 0.12, ny = cur.y + vy - 9.8 * dt * dt * 0.2 + (rp.y - cur.y) * 0.12, nz = cur.z + vz + (rp.z - cur.z) * 0.12;
+      const rp = this.bodyPoint({ x: sway * i * seg * 0.3, y: d.bodyHeight * 0.12 + (inp.tailUp * 0.6 - 0.15) * i * seg, z: anchorZ - i * seg });
+      const k = i === 1 ? 0.85 : i === 2 ? 0.5 : 0.12 + 0.2 / i;
+      let nx = cur.x + vx + (rp.x - cur.x) * k, ny = cur.y + vy - 9.8 * dt * dt * 0.2 + (rp.y - cur.y) * k, nz = cur.z + vz + (rp.z - cur.z) * k;
       const g = inp.ground(nx, nz) + 0.004 * d.scale;
       if (ny < g) ny = g;
       const a = this.tailPts[i - 1];
@@ -364,6 +374,16 @@ export class Motion {
   gazeDir(): V3 { return dirFromYawPitch(this.gYaw, this.gPitch); }
   headDir(): V3 { return dirFromYawPitch(this.hYaw, this.hPitch); }
   inSaccade(): boolean { return this.sacc !== null; }
+}
+
+/** Local body offset → world, with the same rotation order the renderer uses (Euler YXZ: Ry(heading)·Rx(-pitch)·Rz(roll)). */
+export function bodyFrame(l: V3, root: V3, heading: number, pitch: number, roll: number): V3 {
+  const cr = Math.cos(roll), sr = Math.sin(roll);
+  const x1 = l.x * cr - l.y * sr, y1 = l.x * sr + l.y * cr, z1 = l.z;
+  const cp = Math.cos(-pitch), sp = Math.sin(-pitch);
+  const y2 = y1 * cp - z1 * sp, z2 = y1 * sp + z1 * cp;
+  const ch = Math.cos(heading), sh = Math.sin(heading);
+  return { x: root.x + x1 * ch + z2 * sh, y: root.y + y2, z: root.z - x1 * sh + z2 * ch };
 }
 
 /** Two-bone IK: knee position for a hip and foot. Front knees bend back, rear knees bend forward. */

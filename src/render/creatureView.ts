@@ -1,7 +1,7 @@
 // L0 RENDER: the creature's body, drawn from the motion layer's pose (blueprint 14.4–14.6).
 // Shell-textured fur, eyeballs with a live pupil and a wet cornea, lids that blink and follow the gaze.
 import * as THREE from 'three';
-import type { CreaturePose, RigDims } from '../body/motion';
+import { bodyFrame, type CreaturePose, type RigDims } from '../body/motion';
 import { Tube, shapedSphere } from './geom';
 import { Rng } from '../util/rng';
 
@@ -279,7 +279,9 @@ export class CreatureView {
 
     // neck from the chest to the back of the head
     const fw = new THREE.Vector3(Math.sin(p.heading), 0, Math.cos(p.heading));
-    const chest = new THREE.Vector3(p.root.x, p.root.y + 0.006 * s, p.root.z).addScaledVector(fw, 0.034 * s);
+    // anchored inside the chest through the same body frame the motion layer uses, so the neck stays attached on slopes
+    const c0 = bodyFrame({ x: 0, y: 0.006 * s, z: 0.032 * s }, p.root, p.heading, p.bodyPitch, p.bodyRoll);
+    const chest = new THREE.Vector3(c0.x, c0.y, c0.z);
     const hf = new THREE.Vector3(Math.sin(p.headYaw) * Math.cos(p.headPitch), Math.sin(p.headPitch), Math.cos(p.headYaw) * Math.cos(p.headPitch));
     const nape = new THREE.Vector3(p.head.x, p.head.y - 0.002 * s, p.head.z).addScaledVector(hf, -0.008 * s);
     const mid = chest.clone().lerp(nape, 0.5).add(new THREE.Vector3(0, 0.003 * s, 0));
