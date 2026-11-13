@@ -139,6 +139,8 @@ tree:
     trunk:
       words: [trunk]
       size_m: 0.6
+      looks: thick_line
+      relation: {sticks_out_of: ground}
       parts:
         bark:
           words: [bark]
@@ -150,16 +152,31 @@ tree:
     branch:
       count: 12
       words: [branch]
+      looks: line
+      relation: {branches_from: trunk}
       parts:
         leaf:
           count: 40
           words: [leaf]
           size_m: 0.05
-          attrs: {color: green, shape: oval, texture: smooth}
+          looks: round_flat
+          relation: {attached_to: branch}
+          attrs: {color: green, texture: smooth}
           motion: flutter_in_wind
+          smell: {sig: green, strength: 0.05}
+          touch: {texture: smooth, hardness: soft}
           taste: {sig: bitter, nutrition: 0.02}
-          details:
-            veins: {words: [veins, lines], needs: {angle: 10}}
+          parts:
+            stem:
+              words: [stem]
+              looks: skinny_line
+              relation: {runs_through: leaf}
+              needs: {angle: 6}
+            veins:
+              words: [veins]
+              looks: thin_lines
+              relation: {branches_from: stem}
+              needs: {angle: 10, dwell_s: 0.8}
 
 ant:
   words: [ant]
@@ -178,6 +195,37 @@ ant:
 ```
 
 The world hands a node's words and features to the creature only when the creature's senses have resolved that node. A tree seen from across the map gives up "tree" and nothing else. The hair on the ant's leg is given up only to a creature whose eye is within about 4 cm of the leg, looking straight at it, in good light, for a second.
+
+**Beyond its words, every node carries three things:**
+
+- **`looks`**: how it appears, in perceptual primitives (round, flat, line, skinny, thick, pointy, lumpy, branching, plus color, size and texture). These primitives are innate, so the creature can describe anything it has measured before it has a name for it: "a round green thing with a skinny line going through it".
+- **`relation`**: how it sits relative to its parent or neighbors: `runs_through`, `branches_from`, `attached_to`, `sticks_out_of`, `on_top_of`, `around`, `inside`, `touching`. Relations turn a list of parts into a structure, and structure is what makes comparisons between different objects possible (8.2).
+- **Per-sense properties**: `smell`, `touch`, `taste`, `sound`. Each one is measured only by its own sense (5.8).
+
+**Fractal depth.** Objects nest as deeply as they need to, and the same rules apply at every level. Detail exists in the world only to the depth it was written into the ontology, so the ontology decides how much there is to discover. The format handles anything, natural or built:
+
+```yaml
+car:
+  words: [car]
+  parts:
+    body:    {words: [body], looks: big_box}
+    door:    {count: 4, words: [door], looks: flat, relation: {attached_to: body}}
+    engine:  {words: [engine], relation: {inside: body}, sound: {sig: low_rumble}}
+    exhaust: {words: [exhaust pipe], looks: skinny_tube, smell: {sig: sharp_smoke}}
+    wheel:
+      count: 4
+      words: [wheel]
+      parts:
+        tire:
+          words: [tire]
+          looks: round
+          attrs: {color: black}
+          touch: {texture: rubbery}
+          relation: {touching: ground}
+        rim: {words: [rim], looks: round, attrs: {color: silver}, relation: {inside: tire}}
+```
+
+At a glance it registers as "car". A lock on a wheel measures the tire. Touching the tire measures "rubbery". After that the creature can compare the tire with every other round thing, rubbery thing, or thing touching the ground it has measured.
 
 ### 3.3 Embeddings
 
@@ -380,6 +428,32 @@ Touch also resolves details vision cannot: `needs: {touch: true}` attributes lik
 
 The body reports itself the same way the outside world does: energy, hydration, fullness, fatigue, temperature and pain all generate percepts that compete for attention. A hunger pang can win the workspace over a butterfly.
 
+### 5.8 Observation is measurement
+
+The world holds every property of every node. For the creature, a property does not exist until one of its senses measures it, and what it knows about anything is exactly the history of its measurements.
+
+Each sense measures its own properties:
+
+| Sense | Measures |
+|---|---|
+| Vision | looks, color, size, motion, parts, relations between parts |
+| Touch | texture, hardness, temperature, wetness |
+| Smell | smell signature and strength |
+| Taste | taste signature, and later the body's outcome |
+| Hearing | sound signature, rhythm, direction |
+
+Every measurement is recorded:
+
+```
+{node, concept, sense, property, value, time, place,
+ conditions: {distance, light, view_angle, duration}, confidence}
+```
+
+- **How deep a look goes decides how much gets measured.** A glance measures the whole node only. A lock measures its parts. A long lock or a close approach measures details.
+- **Conditions set confidence.** A measurement taken at dusk or from far away is low-confidence and can be wrong. A better measurement later replaces it, and the correction is itself an event ("oh it aint brown, its green").
+- **Each measurement updates that sense's memory** of the concept (its smell prototype, its touch prototype) and becomes a fact with that sense as its source.
+- **Every measurement can be put into words**, because measured values map onto the innate primitives: "it feel smooth", "it smell kinda fresh", "it got a skinny line goin through it".
+
 ---
 
 ## 6. Attention and the workspace
@@ -481,24 +555,46 @@ Percepts are noisy when the view is poor, so the creature sometimes gets it wron
 
 Because every concept has a prototype per sense, any one sense can activate it. A smell alone can bring up the concept, its name, where it was found and what happened there.
 
+**Structural comparison.** Concepts are also compared by structure. The measured parts of a concept, with their `looks` and `relation`s, form a small graph. When the same pattern shows up in two concepts, the creature can draw an analogy:
+
+```
+tree:   line ─sticks_out_of→ ground,   leaves ─attached_to→ line
+flower: line ─sticks_out_of→ ground,   leaves ─attached_to→ line,   petals ─on_top_of→ line
+shared: "a line with leaves on it, sticking out of the ground"
+```
+
+That shared pattern is what becomes "a tree kinda looks like a flower .. it got a line with leafs on it and its stickin out the ground". Comparisons can also run on a single property: round things, rubbery things, green things, things touching the ground. Only measured parts and relations count, so the creature can only draw the analogies its own observations support.
+
 ### 8.3 The naming mechanism
 
 1. The fixated node is resolved and recognition says **novel**.
 2. Novelty raises curiosity, which refills gaze interest, so it keeps looking.
 3. After 1–2 s of fixation the `NAME_IT` thought may fire (weighted, not guaranteed).
-4. The world hands over the `words` embedded in the node it actually resolved, at the level it resolved it. A distant ant offers `coarse_words` ("bug"); an ant inspected closely offers "ant".
-5. The creature picks one word by weighted choice. Once picked, it sticks: that is the creature's name for the thing from then on. Other listed words are still understood when you use them.
-6. A concept is created: prototype = current percept, name = the picked word, first seen = here and now.
-7. The thought is rendered ("what is this? .. i should give it a name so if i see it again ill remember it .. ill call it a leaf") and stored.
-8. **Attribute pass.** For each attribute it resolved (color, shape, texture):
-   - If another known concept shares that value, a comparison thought fires: "its the same color as grass .. so its green".
-   - If the value is new, the attribute word is itself discovered from the node: "ill call this color green".
+4. **Describe first.** The thought opens by describing what was measured, using innate primitives and relations: "its like a round green thing with a skinny line goin through it and more lines comin off it". Only measured parts appear in the description.
+5. **Name the combination.** The world hands over the `words` embedded in the node it actually resolved, at the level it resolved it. A distant ant offers `coarse_words` ("bug"); an ant inspected closely offers "ant". The creature picks one word by weighted choice. Once picked, it sticks: that is the creature's name for the thing from then on. Other listed words are still understood when you use them.
+6. **Name each measured part** the same way, in the same thought or the next ones: "ill call the skinny line a stem .. and them other lines veins". Parts that were not measured get no name and no concept.
+7. **Concepts are created** for the whole and for each named part. Each gets a prototype for every sense that measured it, the relations between them, its name, and when and where it was first seen.
+8. **The thought is stored as an episode** together with the measurements it was built from. This is the creature's memory of what it witnessed.
+9. **Comparisons.** For each measured attribute that another known concept shares, a comparison thought may fire: "its the same color as grass".
+
+The whole naming thought, for a leaf inspected closely:
+
+> "this look interesting .. its like a round green thing with a skinny line goin through it and more lines comin off it .. ill call this a leaf .. the skinny line a stem .. and them lil lines veins"
+
+For the same leaf seen only at arm's length, without the stem or veins resolved:
+
+> "hm whats this .. a lil round green thing .. ill call it a leaf"
 
 If the naming thought does not fire (the glance was too short), the thing is stored as an unnamed concept. On a later meeting it produces "i seen this before but idk what it is", and the chance of naming goes up.
 
 Refinement creates taxonomy for free: when a thing first named "bug" is later resolved finely and named "ant", the graph records that an ant is a kind of bug.
 
-**Innate vs. discovered vocabulary.** Function words, body words, feeling words and basic verbs (see, smell, eat, call, look, want) are innate. Every noun and attribute word belonging to the world is locked until discovered.
+**Innate vs. discovered vocabulary.**
+
+- **Innate:** function words, body words, feeling words, basic verbs (see, smell, eat, call, look, want), and the perceptual primitives it describes with: colors, shapes, sizes, textures, and simple relations (through, off, on, out of, inside).
+- **Discovered:** every name of a thing or part in the world.
+
+It can always describe what it measured. It can only name what it has named.
 
 ### 8.4 Association: how a smell brings back an event
 
@@ -752,7 +848,51 @@ Pretrained knowledge still matters, because it is where emergence in conversatio
 - **Masked decoding.** World words that are not in its lexicon and were not just said to it cannot be emitted.
 - **Validation.** Every reply is checked against memory before it is spoken (8.5).
 
-### 10.6 Not sounding like a recording
+### 10.6 Answering from experience
+
+Every answer is built in two steps:
+
+1. **The content planner** decides what to say. It picks an answer intent and selects facts, measurements and episodes from memory.
+2. **The realizer** decides how to say it, from the phrase bank, the model, or both (see the end of this section).
+
+**Detail follows measurement.** The planner can only include what was measured, so the same question gets different answers depending on how the creature met the thing:
+
+| How it met the leaf | "do you know what a leaf is?" |
+|---|---|
+| Glance only | "yea i saw a leaf earlier .. it was movin in the wind" |
+| Locked on it | "yea i seen one this morning .. lil round green thing" |
+| Inspected it | "yea bro i saw a leaf earlier today .. its green, got a stem goin through it and lil veins comin off it" |
+| Inspected and touched it | "... and it felt smooth" |
+
+**Time comes from the episode.** The planner compares the episode's timestamp with now and picks a time phrase from the actual gap: "just now", "a lil while ago", "earlier today", "this morning", "last night", "yesterday", "a couple days ago", "a while back". The creature tells time by the light, so clock times are approximate ("round midday", "when the sun was goin down"). If several episodes match, it may mention the first, the most recent, or the most vivid, by weighted choice.
+
+**Questions about parts.**
+
+| Situation | "what is a vein on a leaf?" |
+|---|---|
+| Measured and named the veins | "the veins is them skinny lines comin off the stem" (rendered from its own measured `looks` and `relation`) |
+| Saw lines but never named them | "i seen some lil lines on it .. that what you mean?" Your word then attaches to its unnamed measurement. |
+| Never measured, word unknown | "whats a vein?" / "i aint notice nothin like that" / "i never seen that .. what is it" |
+| Never measured, you explain: "its something on a leaf" | "oh word .. imma look next time i see one" Stored as told, with a pending check on leaves. |
+| Later inspects a leaf and finds them | "oh i see the veins now .. you was right" Fact becomes seen. |
+
+**Comparison questions** use structural comparison (8.2). "Does a tree look like anything?" retrieves concepts that share measured patterns: "kinda like a flower .. it got a line with leafs on it stickin out the ground".
+
+**Each answer intent is a sequence of moves**, and each move has many phrasings:
+
+```
+ANSWER_KNOWN = AFFIRM + RECALL_EVENT(time, place) + DETAILS(sampled subset of measurements) + [FEELING]
+```
+
+The planner shuffles which details are included and in what order, so the same question asked twice gets a different true answer.
+
+**Generation: both ways work. Use a hybrid.** The content planner is always symbolic and reads memory, which is what keeps the creature honest. The realizer can be swapped:
+
+- **Combinatorial grammar.** Always available, fully predictable, no training needed. With enough phrasings per move it already sounds natural.
+- **Transformer.** Trained on the grammar's output plus simulation logs (10.5), so it sounds the same but handles loosely worded questions and blends intents more smoothly. In the model, the planner's chosen facts are what the memory tokens carry.
+- **Hybrid.** The transformer speaks when its output passes validation (8.5); otherwise the grammar does. You can start with grammar only and add the model later without changing anything else.
+
+### 10.7 Not sounding like a recording
 
 - Combinatorial phrase bank (10.4).
 - A recency penalty on recently used phrasings and openers.
@@ -770,17 +910,18 @@ Pretrained knowledge still matters, because it is where emergence in conversatio
 | Step | Module | What happens |
 |---|---|---|
 | 1 | Eyes | Scanning. A leaf flutters in the periphery: motion + novelty give it the top salience. Sampled as winner. |
-| 2 | Eyes | Saccade, lock, pursuit. The head follows. |
+| 2 | Eyes | Saccade, lock, pursuit. The head follows. Measurement: the whole node only, "small green moving thing". |
 | 3 | Workspace | The leaf becomes the focus and is broadcast. |
 | 4 | Memory | Recognition score is low: novel. |
-| 5 | Appraisal | Novelty high, threat low. Curiosity rises. Stance sampled: inspect. |
-| 6 | Mind | Approaches. As it closes distance, branch, leaf and bark resolve as parts of the larger thing. |
-| 7 | Inner voice | NAME_IT fires for the whole: "what is this? .. ill call it a tree". Then for the part in focus: "ill call it a leaf". |
-| 8 | Inner voice | Attribute pass: "its the same color as grass .. so its green". |
-| 9 | Memory | Concepts tree and leaf created; facts `leaf part_of tree`, `leaf has color green` stored as seen. Gaze record and episode written. |
-| 10 | Eyes | Interest drains. Release. Already-looked penalty applied. Scanning resumes. |
+| 5 | Appraisal | Novelty high, threat low. Curiosity rises. Stance sampled: inspect. (Watch or ignore were also possible.) |
+| 6 | Mind | Approaches. The leaf grows in view: shape (round, flat) and color measured, then the stem resolves. |
+| 7 | Eyes | It holds the lock. After about a second, the veins are noticed. |
+| 8 | Inner voice | NAME_IT with description: "this look interesting .. its like a round green thing with a skinny line goin through it and more lines comin off it .. ill call this a leaf .. the skinny line a stem .. and them lil lines veins". |
+| 9 | Touch, smell | It noses the leaf. Touch measures smooth and soft; smell measures a faint fresh smell. Each goes into its own sense's memory. "it feel smooth" |
+| 10 | Memory | Concepts leaf, stem and veins created, with their relations and per-sense prototypes. The episode and the thought are stored with the time and place. |
+| 11 | Eyes | Interest drains. Release. Already-looked penalty applied. Scanning resumes. |
 
-Later: "do you know what a leaf is?" → "yea i saw a leaf on a tree". It never got close enough for the veins, so it will not mention them.
+Later you ask "do you know what a leaf is?" and it answers "yea bro i saw a leaf earlier today .. its green, got a stem goin through it and lil veins comin off it". Asked "what is a vein on a leaf?", it answers "them skinny lines comin off the stem". If it had only watched the leaf blow by, it would answer "yea i saw a leaf earlier .. it was movin in the wind", and the vein question would get "whats a vein?".
 
 ### B. Something falls and hits it
 
@@ -909,7 +1050,7 @@ Each stage is usable on its own and has a test that defines "done".
 | 1 | Ontology loader, world tick, basic viewer. A few entities: ground, tree, bush, pond, ant. Creature as a simple body walking around. | It can be watched in a browser, and ten simulated minutes run headless in seconds. |
 | 2 | Eyes: visibility model, salience, scan / lock / pursue / release, gaze overlay. | With nothing moving, fixations last 200–600 ms and spread over the scene. A butterfly crossing gets locked most of the time, not every time. After release the eyes do not snap back. |
 | 3 | Body, drives, reflexes, mouth. Hunger, thirst, pain, tasting. | Left alone it gets hungry, tastes things, finds the berries and survives a day. Time-to-dodge a repeated hazard shortens. |
-| 4 | Memory, concepts, naming, thought stream (grammar only). | First tree is named once. Second tree is recognized, not renamed. The knowledge graph holds only what it got close enough to notice. |
+| 4 | Memory, measurements, concepts, naming, thought stream (grammar only). | First tree is named once. Second tree is recognized, not renamed. Naming thoughts describe and name only the parts that were measured. The knowledge graph holds only what it got close enough to notice. |
 | 5 | Smell, hearing, association and recall. | The smell of hidden berries draws it in and triggers a recall thought. It turns toward sounds. After one sting it flinches at buzzing. |
 | 6 | Player creature, dialogue and knowledge gating. | It hears you only within range and sometimes looks at you before answering. The ant-hair question flips from "havent seen that" to "yea i seen it" only after a close inspection. Across a thousand random questions, no answer contains an undiscovered word or fact. |
 | 7 | World pretraining, sim-logged corpus, state-conditioned model. | Model replies pass the same no-leak test, phrasing rarely repeats, fallback to the grammar is rare, and it answers questions it was never trained on by reasoning from what it saw. |
