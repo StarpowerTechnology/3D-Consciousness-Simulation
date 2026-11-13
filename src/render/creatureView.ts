@@ -20,7 +20,7 @@ function tailRings(): THREE.CanvasTexture {
   return t;
 }
 
-export const CREATURE_PALETTE: Palette = { fur: '#7a4d2a', belly: '#d9c09a', skin: '#c48a7c', iris: [120, 70, 25], nose: '#2a1a16', shells: 14 };
+export const CREATURE_PALETTE: Palette = { fur: '#9a6236', belly: '#f0dcb8', skin: '#c48a7c', iris: [120, 70, 25], nose: '#2a1a16', shells: 14 };
 export const PLAYER_PALETTE: Palette = { fur: '#6f7a86', belly: '#c9cfd6', skin: '#b58a86', iris: [70, 140, 70], nose: '#1b1d22', shells: 12 };
 
 function furColorMap(top: string, bottom: string, seed: number): THREE.CanvasTexture {
@@ -196,7 +196,7 @@ export class CreatureView {
       t.colorSpace = THREE.SRGBColorSpace;
       return t;
     })();
-    const er = 0.0047 * s;
+    const er = 0.0054 * s; // a little larger than life: cartoon eyes read better at a distance
     const cap = (radius: number, theta: number, planarUv: boolean) => {
       const g = new THREE.SphereGeometry(radius, 32, 12, 0, Math.PI * 2, 0, theta);
       g.rotateX(Math.PI / 2); // pole toward +z
@@ -222,6 +222,10 @@ export class CreatureView {
       const pupil = new THREE.Mesh(cap(er * 1.006, 0.42, false), pupilMat);
       ball.add(pupil);
       ball.add(new THREE.Mesh(cap(er * 1.07, 1.05, false), cornea));
+      // a catchlight: the small white glint that makes cartoon eyes look alive
+      const glint = new THREE.Mesh(new THREE.SphereGeometry(er * 0.2, 10, 8), new THREE.MeshBasicMaterial({ color: '#ffffff' }));
+      glint.position.set(er * 0.32, er * 0.38, er * 0.98);
+      ball.add(glint);
       socket.add(ball);
       const upper = new THREE.Mesh(new THREE.SphereGeometry(er * 1.16, 24, 10, 0, Math.PI * 2, 0, Math.PI * 0.52), lidMat);
       const lower = new THREE.Mesh(new THREE.SphereGeometry(er * 1.14, 24, 10, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.45), lidMat);

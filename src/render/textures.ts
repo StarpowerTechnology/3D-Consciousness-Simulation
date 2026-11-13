@@ -32,12 +32,16 @@ export function leafTexture(base = '#4f8a2c', edge = '#2f5e18', autumn = false):
   grad.addColorStop(1, autumn ? '#8a4a1e' : edge);
   g.fillStyle = grad;
   g.fill(path);
+  // a soft darker outline, cartoon style
+  g.strokeStyle = autumn ? 'rgba(120,60,20,0.6)' : 'rgba(30,80,20,0.55)';
+  g.lineWidth = 7;
+  g.stroke(path);
   g.save();
   g.clip(path);
   // mottling
   const r = new Rng(autumn ? 7 : 3);
-  for (let i = 0; i < 160; i++) {
-    g.fillStyle = `rgba(${autumn ? '90,50,10' : '20,40,5'},${r.range(0.02, 0.08)})`;
+  for (let i = 0; i < 25; i++) {
+    g.fillStyle = `rgba(${autumn ? '90,50,10' : '20,40,5'},${r.range(0.02, 0.05)})`;
     g.beginPath();
     g.arc(r.range(0, S), r.range(0, S), r.range(2, 14), 0, Math.PI * 2);
     g.fill();

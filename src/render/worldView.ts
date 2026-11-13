@@ -6,7 +6,8 @@ import type { NodeInst } from '../world/nodes';
 import { flutter } from '../world/fields';
 import { surfaceAt, POND, WATER_LEVEL } from '../world/terrain';
 import { staticTube, leafGeometry, shapedSphere } from './geom';
-import { barkTexture, groundTexture, leafTexture, noiseTexture, petalTexture, spotsTexture, waterNormals, wingTexture } from './textures';
+import { clay, jitter, merge, paint, PALETTE, petalGeometry, puff } from './toon';
+import { leafTexture, noiseTexture, waterNormals, wingTexture } from './textures';
 import { fbm2, Rng } from '../util/rng';
 
 interface InstGroup { mesh: THREE.InstancedMesh; nodes: NodeInst[] }
@@ -14,7 +15,7 @@ interface InstGroup { mesh: THREE.InstancedMesh; nodes: NodeInst[] }
 export class WorldView {
   readonly scene = new THREE.Scene();
   readonly sun = new THREE.DirectionalLight('#fff2dd', 2.4);
-  readonly hemi = new THREE.HemisphereLight('#bcd7ff', '#4a3a22', 0.4);
+  readonly hemi = new THREE.HemisphereLight('#cfe6ff', '#7a8a4a', 0.6);
   private sky = new Sky();
   private pmrem: THREE.PMREMGenerator;
   private envRT: THREE.WebGLRenderTarget | null = null;
@@ -46,7 +47,7 @@ export class WorldView {
   constructor(private world: World, private renderer: THREE.WebGLRenderer) {
     const sc = this.scene;
     this.pmrem = new THREE.PMREMGenerator(renderer);
-    sc.fog = new THREE.FogExp2('#b9c9d6', 0.035);
+    sc.fog = new THREE.FogExp2('#cfe3ee', 0.018);
 
     this.sky.scale.setScalar(400);
     const u = this.sky.material.uniforms;
@@ -104,12 +105,9 @@ export class WorldView {
     for (let i = 0; i < n; i++) {
       const x = t.positions[i * 3], z = t.positions[i * 3 + 2];
       const s = surfaceAt(x, z);
-      const v = fbm2(x * 0.9, z * 0.9, 3, 5) * 0.12;
-      if (s === 'grass') c.setRGB(0.3 + v, 0.36 + v, 0.17);
-      else if (s === 'dirt') c.setRGB(0.46 + v, 0.35 + v, 0.24 + v);
-      else if (s === 'mud') c.setRGB(0.28, 0.22, 0.16);
-      else if (s === 'sand') c.setRGB(0.68 + v, 0.6 + v, 0.45);
-      else c.setRGB(0.22, 0.2, 0.16);
+      const v = fbm2(x * 0.6, z * 0.6, 3, 5) * 0.08;
+      const base = s === 'grass' ? PALETTE.groundGrass : s === 'dirt' ? PALETTE.groundDirt : s === 'mud' ? PALETTE.groundMud : s === 'sand' ? PALETTE.groundSand : PALETTE.groundMud;
+      c.copy(base).offsetHSL(v * 0.2, 0, v);
       col.set([c.r, c.g, c.b], i * 3);
       uv[i * 2] = x * 1.4;
       uv[i * 2 + 1] = z * 1.4;
@@ -117,7 +115,9 @@ export class WorldView {
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     g.computeVertexNormals();
-    const m = new THREE.MeshStandardMaterial({ vertexColors: true, map: groundTexture(), roughness: 0.95, bumpMap: noiseTexture(256, 3, 0.4), bumpScale: 0.6 });
+    const m = clay('#ffffff', { vertexColors: true, roughness: 0.92, rim: 0 });
+    m.bumpMap = noiseTexture(256, 3, 0.4);
+    m.bumpScale = 0.25;
     const mesh = new THREE.Mesh(g, m);
     mesh.receiveShadow = true;
     mesh.userData.nodeId = 'ground';
@@ -132,28 +132,37 @@ export class WorldView {
     const p = blade.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < p.count; i++) {
       const y = p.getY(i);
-      p.setX(i, p.getX(i) * (1 - y * 0.92));
+      // a fat cartoon blade: wide at the base, rounded to a soft point
+      p.setX(i, p.getX(i) * (1 - y * y * 0.9));
       p.setZ(i, y * y * 0.18);
     }
     blade.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.75, side: THREE.DoubleSide, vertexColors: false });
+    const mat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7, side: THREE.DoubleSide });
     mat.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, this.grassUniforms);
-      sh.vertexShader = 'uniform float uTime; uniform vec3 uWind; uniform float uStrength; uniform float uGust;\n' + sh.vertexShader.replace(
+      sh.uniforms.uLow = { value: PALETTE.grassLow };
+      sh.uniforms.uHigh = { value: PALETTE.grassHigh };
+      sh.vertexShader = 'uniform float uTime; uniform vec3 uWind; uniform float uStrength; uniform float uGust; varying float vH;\n' + sh.vertexShader.replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
          vec4 wp0 = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
          float h = position.y;
+         vH = h;
          // same sway function as world/fields.ts swayAngle
          float sway = (0.05 + 0.25 * uStrength) * sin(uTime * 2.2 + wp0.x * 1.7 + wp0.z * 1.3) * (0.4 + 0.6 * uGust) + 0.12 * uStrength;
          vec3 localWind = (inverse(mat3(instanceMatrix)) * uWind);
          transformed.xz += normalize(localWind.xz + 1e-5) * sway * h * h * 1.2;
          transformed.y -= abs(sway) * h * h * 0.25;`,
       );
+      sh.fragmentShader = 'uniform vec3 uLow; uniform vec3 uHigh; varying float vH;\n' + sh.fragmentShader.replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+         diffuseColor.rgb = mix(uLow, uHigh, smoothstep(0.0, 1.0, vH)) * mix(vec3(1.0), diffuseColor.rgb, 0.5) * 1.05;`,
+      );
     };
     this.grassMat = mat;
     const patches = this.world.nodes.tops.filter((n) => n.entity === 'grass');
-    const per = 220;
+    const per = 160;
     const mesh = new THREE.InstancedMesh(blade, mat, patches.length * per);
     const r = new Rng(31);
     const col = new THREE.Color();
@@ -167,10 +176,10 @@ export class WorldView {
         this.dummy.position.set(x, y, z);
         this.dummy.rotation.set(r.range(-0.15, 0.15), r.range(0, Math.PI * 2), r.range(-0.15, 0.15));
         const hh = h * r.range(0.55, 1.25);
-        this.dummy.scale.set(hh * r.range(0.025, 0.045), hh, 1);
+        this.dummy.scale.set(hh * r.range(0.05, 0.08), hh, 1);
         this.dummy.updateMatrix();
         mesh.setMatrixAt(k, this.dummy.matrix);
-        col.setHSL(0.21 + r.range(-0.04, 0.05), 0.5 + r.range(0, 0.2), 0.2 + r.range(-0.05, 0.08));
+        col.setHSL(0.27 + r.range(-0.04, 0.04), 0.6, 0.55 + r.range(-0.1, 0.1));
         mesh.setColorAt(k, col);
         k++;
       }
@@ -183,10 +192,12 @@ export class WorldView {
   // ---------------------------------------------------------------- plants
 
   private buildPlants() {
-    const bark = new THREE.MeshStandardMaterial({ map: barkTexture(), roughness: 0.95, color: '#7d5f44' });
-    const stalkMat = new THREE.MeshStandardMaterial({ color: '#4f7f2a', roughness: 0.7 });
-    const leafMap = leafTexture();
-    const leafMat = new THREE.MeshStandardMaterial({ map: leafMap, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.62 });
+    // trunks and branches: one solid, vertex-coloured clay material; every tube is capped at both ends
+    const wood = clay('#ffffff', { vertexColors: true, roughness: 0.75, rim: 0.25, side: THREE.DoubleSide });
+    const stalkMat = clay(PALETTE.stalk, { roughness: 0.5, rim: 0.3 });
+    const foliageMat = clay('#ffffff', { vertexColors: true, roughness: 0.62, rim: 0.4 });
+    const leafMap = leafTexture('#63c043', '#3f962c');
+    const leafMat = new THREE.MeshStandardMaterial({ map: leafMap, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.55 });
     const leafDepth = new THREE.MeshDepthMaterial({ map: leafMap, alphaTest: 0.5, depthPacking: THREE.RGBADepthPacking });
     const leafGeo = leafGeometry();
     const leafNodes: NodeInst[] = [];
@@ -202,29 +213,53 @@ export class WorldView {
     for (const top of this.world.nodes.tops) {
       walk(top);
       if (top.entity === 'tree' || top.entity === 'bush' || top.entity === 'flower') {
-        const geos: THREE.BufferGeometry[] = [];
+        const rr = new Rng(Math.round((top.render.base?.x ?? 0) * 1000 + (top.render.base?.z ?? 0) * 7919) >>> 0);
+        const woodGeos: THREE.BufferGeometry[] = [];
         for (const c of top.children) if (c.render.tube) {
-          const m = new THREE.Mesh(staticTube(c.render.tube, c.render.radii, top.entity === 'tree' && c.spec.key === 'trunk' ? 18 : 10, top.entity === 'tree' && c.spec.key === 'trunk' ? 16 : 7), top.entity === 'flower' ? stalkMat : bark);
-          m.castShadow = true;
-          m.receiveShadow = true;
-          m.userData.nodeId = c.id;
-          if (top.entity === 'tree' && c.spec.key === 'trunk') (m.material as THREE.MeshStandardMaterial).map!.repeat.set(2, 3);
-          this.scene.add(m);
-          this.pickables.push(m);
-          geos.push(m.geometry);
+          const isTrunk = top.entity === 'tree' && c.spec.key === 'trunk';
+          const g = staticTube(c.render.tube, c.render.radii, isTrunk ? 18 : 10, isTrunk ? 16 : 9);
+          if (top.entity === 'flower') {
+            const m = new THREE.Mesh(g, stalkMat);
+            m.castShadow = m.receiveShadow = true;
+            m.userData.nodeId = c.id;
+            this.scene.add(m);
+            this.pickables.push(m);
+            continue;
+          }
+          const tone = jitter(isTrunk ? PALETTE.trunk : PALETTE.trunkDark, rr, 0.01, 0.05, 0.04);
+          woodGeos.push(paint(g, tone, 0.12, isTrunk ? 0.3 : 0.15));
+          // a pickable proxy keeps the node id per part, while drawing stays one merged mesh
+          const proxy = new THREE.Mesh(g, wood);
+          proxy.visible = false;
+          proxy.userData.nodeId = c.id;
+          this.scene.add(proxy);
+          this.pickables.push(proxy);
         }
         // roots flaring into the ground for big trees
         if (top.entity === 'tree' && top.render.big) {
           const r0 = top.children.find((c) => c.spec.key === 'trunk')!.render.radii[0];
-          const rr = new Rng(top.id.length * 7);
           for (let i = 0; i < 6; i++) {
             const a = (i / 6) * Math.PI * 2 + rr.range(-0.3, 0.3);
             const b = top.render.base;
             const pts = [{ x: b.x + Math.cos(a) * r0 * 0.6, y: b.y + r0 * 0.9, z: b.z + Math.sin(a) * r0 * 0.6 }, { x: b.x + Math.cos(a) * r0 * 1.5, y: b.y + r0 * 0.15, z: b.z + Math.sin(a) * r0 * 1.5 }, { x: b.x + Math.cos(a) * r0 * 3.2, y: b.y - r0 * 0.4, z: b.z + Math.sin(a) * r0 * 3.2 }];
-            const m = new THREE.Mesh(staticTube(pts, [r0 * 0.42, r0 * 0.2, r0 * 0.04], 10, 10), bark);
-            m.castShadow = m.receiveShadow = true;
-            this.scene.add(m);
+            woodGeos.push(paint(staticTube(pts, [r0 * 0.42, r0 * 0.2, r0 * 0.04], 10, 10), PALETTE.trunkDark, 0.05, 0.3));
           }
+        }
+        if (woodGeos.length) {
+          const m = new THREE.Mesh(merge(woodGeos), wood);
+          m.castShadow = m.receiveShadow = true;
+          m.userData.nodeId = top.id;
+          this.scene.add(m);
+        }
+        // puffy cartoon foliage around the branch ends (trees) and over the body (bushes)
+        const puffs = this.foliageFor(top, rr);
+        if (puffs.length) {
+          const fm = new THREE.Mesh(merge(puffs), foliageMat);
+          fm.castShadow = true;
+          fm.receiveShadow = true;
+          fm.userData.nodeId = top.id;
+          this.scene.add(fm);
+          this.pickables.push(fm);
         }
       }
       if (top.entity === 'mushroom') this.mushroom(top);
@@ -236,8 +271,7 @@ export class WorldView {
     lm.receiveShadow = true;
     const col = new THREE.Color();
     leafNodes.forEach((n, i) => {
-      const big = n.top.entity === 'tree' && n.top.render.big;
-      col.setHSL(0.24 + (n.phase - 0.5) * 0.06 + (big ? -0.02 : 0), 0.55, 0.42 + (n.phase - 0.5) * 0.12);
+      col.setHSL(0.27 + (n.phase - 0.5) * 0.06, 0.6, 0.62 + (n.phase - 0.5) * 0.12);
       lm.setColorAt(i, col);
     });
     lm.userData.instanceNodes = leafNodes;
@@ -247,7 +281,7 @@ export class WorldView {
 
     // fallen leaves on the ground, blown by the wind through physics
     const fallenNodes = this.world.nodes.tops.filter((n) => n.entity === 'leaf');
-    const fm = new THREE.InstancedMesh(leafGeo, new THREE.MeshStandardMaterial({ map: leafTexture('#b8862e', '#7a3f14', true), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.8 }), fallenNodes.length);
+    const fm = new THREE.InstancedMesh(leafGeo, new THREE.MeshStandardMaterial({ map: leafTexture('#e0a83a', '#b8622a', true), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.7 }), fallenNodes.length);
     fm.customDepthMaterial = new THREE.MeshDepthMaterial({ map: (fm.material as THREE.MeshStandardMaterial).map, alphaTest: 0.5, depthPacking: THREE.RGBADepthPacking });
     fm.castShadow = fm.receiveShadow = true;
     fm.userData.instanceNodes = fallenNodes;
@@ -255,71 +289,170 @@ export class WorldView {
     this.pickables.push(fm);
     this.fallen = { mesh: fm, nodes: fallenNodes };
 
-    // berries: glossy and red
-    const bm = new THREE.InstancedMesh(new THREE.SphereGeometry(0.5, 16, 12), new THREE.MeshPhysicalMaterial({ color: '#b3121b', roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.1, sheen: 0.3 }), berryNodes.length);
+    // berries: glossy, bright and round
+    const bm = new THREE.InstancedMesh(new THREE.SphereGeometry(0.5, 18, 14), clay(PALETTE.berry, { roughness: 0.25, clearcoat: 1, rim: 0.3 }), berryNodes.length);
     bm.castShadow = true;
     bm.userData.instanceNodes = berryNodes;
     this.scene.add(bm);
     this.pickables.push(bm);
     this.berries = { mesh: bm, nodes: berryNodes };
 
-    // petals: six around each flower head, with a fuzzy yellow centre
-    const pg = new THREE.PlaneGeometry(1, 1);
-    pg.translate(0, 0.5, 0);
-    const pm = new THREE.InstancedMesh(pg, new THREE.MeshStandardMaterial({ map: petalTexture(), alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.55 }), petalNodes.length * 7);
-    pm.castShadow = true;
-    const centerGeo = new THREE.SphereGeometry(0.5, 12, 8);
-    const centerMat = new THREE.MeshStandardMaterial({ color: '#f0c22a', roughness: 0.9 });
-    let k = 0;
-    for (const n of petalNodes) {
-      const c = new THREE.Color().setHSL(n.render.hue ?? 0.78, 0.55, 0.62);
-      for (let i = 0; i < 7; i++) {
-        const a = (i / 7) * Math.PI * 2 + n.phase;
-        this.dummy.position.set(n.pos.x, n.pos.y, n.pos.z);
-        this.dummy.rotation.set(0, a, 0, 'YXZ');
-        this.dummy.rotateX(Math.PI / 2 - 0.35);
-        this.dummy.scale.set(n.size * 0.42, n.size * 0.55, 1);
-        this.dummy.updateMatrix();
-        pm.setMatrixAt(k, this.dummy.matrix);
-        pm.setColorAt(k, c);
-        k++;
-      }
-      const ctr = new THREE.Mesh(centerGeo, centerMat);
-      ctr.position.set(n.pos.x, n.pos.y + 0.003, n.pos.z);
-      ctr.scale.set(0.014, 0.008, 0.014);
-      ctr.userData.nodeId = n.children[0]?.id ?? n.id;
-      this.scene.add(ctr);
-      this.pickables.push(ctr);
-    }
-    pm.userData.instanceNodes = petalNodes.flatMap((n) => Array(7).fill(n));
-    this.scene.add(pm);
-    this.pickables.push(pm);
-    this.petals = { mesh: pm, nodes: petalNodes };
+    this.buildFlowers(petalNodes);
 
     // nuts, attached to trees and fallen
-    this.nuts = new THREE.InstancedMesh(shapedSphere(14, 10, (v) => new THREE.Vector3(v.x * 0.5, v.y * 0.62, v.z * 0.5)), new THREE.MeshPhysicalMaterial({ color: '#7a4a22', roughness: 0.35, clearcoat: 0.6 }), 64);
+    this.nuts = new THREE.InstancedMesh(shapedSphere(14, 10, (v) => new THREE.Vector3(v.x * 0.5, v.y * 0.62, v.z * 0.5)), clay(PALETTE.nut, { roughness: 0.35, clearcoat: 0.6 }), 64);
     this.nuts.castShadow = true;
     this.scene.add(this.nuts);
     this.pickables.push(this.nuts);
   }
 
+  /** Puffs of foliage: along the outer part of each branch for trees, a rounded mound for bushes. */
+  private foliageFor(top: NodeInst, rr: Rng): THREE.BufferGeometry[] {
+    const out: THREE.BufferGeometry[] = [];
+    if (top.entity === 'tree') {
+      const big = !!top.render.big;
+      const branches = top.children.filter((c) => c.spec.key === 'branch' && c.render.tube);
+      for (const br of branches) {
+        const [a, c, e] = br.render.tube as { x: number; y: number; z: number }[];
+        const L = Math.hypot(e.x - a.x, e.y - a.y, e.z - a.z);
+        const n = big ? 3 : 2;
+        for (let k = 0; k < n; k++) {
+          const t = 0.55 + (k / Math.max(1, n - 1)) * 0.45;
+          const u = 1 - t;
+          const px = u * u * a.x + 2 * u * t * c.x + t * t * e.x, py = u * u * a.y + 2 * u * t * c.y + t * t * e.y, pz = u * u * a.z + 2 * u * t * c.z + t * t * e.z;
+          const r = L * (big ? 0.26 : 0.3) * rr.range(0.8, 1.15) * (0.75 + 0.35 * t);
+          const g = puff(r, Math.floor(rr.next() * 1e6), big ? 4 : 3);
+          g.translate(px, py + r * 0.25, pz);
+          out.push(paint(g, jitter(PALETTE.foliage[Math.floor(rr.next() * PALETTE.foliage.length)], rr), 0.22, 0.4));
+        }
+      }
+      // a crown over the top of the trunk
+      const trunk = top.children.find((c) => c.spec.key === 'trunk');
+      if (trunk && branches.length) {
+        const tp = trunk.render.tube[trunk.render.tube.length - 1];
+        const r = top.size * (big ? 0.16 : 0.2);
+        const g = puff(r, Math.floor(rr.next() * 1e6), big ? 4 : 3);
+        g.translate(tp.x, tp.y + r * 0.6, tp.z);
+        out.push(paint(g, jitter(PALETTE.foliage[1], rr), 0.25, 0.4));
+      }
+    } else if (top.entity === 'bush') {
+      const { base, R, H } = top.render;
+      for (let k = 0; k < 6; k++) {
+        const a = k * 2.39996 + rr.range(-0.3, 0.3);
+        const d = k === 0 ? 0 : R * rr.range(0.3, 0.45);
+        const r = R * rr.range(0.34, 0.42);
+        const g = puff(r, Math.floor(rr.next() * 1e6), 3);
+        g.translate(base.x + Math.cos(a) * d, base.y + H * rr.range(0.58, 0.72), base.z + Math.sin(a) * d);
+        out.push(paint(g, jitter(PALETTE.bush, rr), 0.22, 0.45));
+      }
+    }
+    return out;
+  }
+
+  /** Cartoon flowers: rounded petals in a ring around a soft face-like centre, the head tilted toward the sky. */
+  private buildFlowers(petalNodes: NodeInst[]) {
+    const N = 8;
+    const petalGeo = petalGeometry(1, 0.42, 0.09);
+    petalGeo.rotateX(Math.PI / 2); // length in the head's plane, thickness along its facing axis
+    const pm = new THREE.InstancedMesh(petalGeo, clay('#ffffff', { roughness: 0.5, rim: 0.45 }), petalNodes.length * N);
+    pm.castShadow = true;
+    const centers = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 24, 16), clay(PALETTE.flowerFace, { roughness: 0.55, rim: 0.35 }), petalNodes.length);
+    centers.castShadow = true;
+    const eyeGeo = new THREE.CapsuleGeometry(1, 1.4, 4, 8);
+    const eyes = new THREE.InstancedMesh(eyeGeo, clay('#4a1e14', { roughness: 0.3, rim: 0.1 }), petalNodes.length * 2);
+    const head = new THREE.Object3D(), part = new THREE.Object3D();
+    head.add(part);
+    let k = 0;
+    petalNodes.forEach((n, fi) => {
+      const r = new Rng(Math.floor(n.phase * 1e6) + 3);
+      const top = n.parent?.render?.top ?? n.pos;
+      // which way the face looks: some direction, tilted up toward the sky
+      const yaw = n.phase * Math.PI * 2, tilt = r.range(0.55, 0.95);
+      head.position.set(top.x, top.y, top.z);
+      head.lookAt(top.x + Math.sin(yaw) * Math.cos(tilt), top.y + Math.sin(tilt), top.z + Math.cos(yaw) * Math.cos(tilt));
+      head.updateMatrixWorld(true);
+      const hue = n.render.hue ?? 0.78;
+      const base = PALETTE.petals[Math.floor(((hue - 0.72) / 0.1) * PALETTE.petals.length) % PALETTE.petals.length] ?? PALETTE.petals[0];
+      const c = jitter(base, r, 0.015, 0.05, 0.04);
+      const R = n.size * 0.5; // petal length
+      for (let i = 0; i < N; i++) {
+        part.position.set(0, 0, -R * 0.05);
+        part.rotation.set(0, 0, (i / N) * Math.PI * 2, 'XYZ');
+        part.rotateY(-0.18); // cup the petals forward a little
+        part.scale.set(R, R, R);
+        part.updateMatrixWorld(true);
+        pm.setMatrixAt(k, part.matrixWorld);
+        pm.setColorAt(k, c);
+        k++;
+      }
+      const cr = R * 0.42;
+      part.position.set(0, 0, R * 0.03);
+      part.rotation.set(0, 0, 0);
+      part.scale.set(cr, cr, cr * 0.55);
+      part.updateMatrixWorld(true);
+      centers.setMatrixAt(fi, part.matrixWorld);
+      for (const side of [-1, 1]) {
+        part.position.set(side * cr * 0.32, cr * 0.12, cr * 0.5);
+        part.rotation.set(0, 0, 0);
+        part.scale.set(cr * 0.075, cr * 0.075, cr * 0.04);
+        part.updateMatrixWorld(true);
+        eyes.setMatrixAt(fi * 2 + (side < 0 ? 0 : 1), part.matrixWorld);
+      }
+    });
+    pm.userData.instanceNodes = petalNodes.flatMap((n) => Array(N).fill(n));
+    centers.userData.instanceNodes = petalNodes.map((n) => n.children[0] ?? n);
+    eyes.userData.instanceNodes = petalNodes.flatMap((n) => [n.children[0] ?? n, n.children[0] ?? n]);
+    this.scene.add(pm, centers, eyes);
+    this.pickables.push(pm, centers);
+    this.petals = { mesh: pm, nodes: petalNodes };
+  }
+
+  /** A toadstool: a glossy red dome with raised white spots, a cream stalk with a skirt and a bulb at the foot. */
   private mushroom(top: NodeInst) {
     const { base, h, cr } = top.render;
+    const rr = new Rng(Math.floor(top.phase * 1e6) + 11);
     const pts: THREE.Vector2[] = [];
-    for (let i = 0; i <= 12; i++) {
-      const t = i / 12;
-      pts.push(new THREE.Vector2(Math.sin(t * Math.PI * 0.5) * cr * (1 - 0.08 * t), Math.cos(t * Math.PI * 0.5) * cr * 0.62));
+    for (let i = 0; i <= 16; i++) {
+      const t = i / 16;
+      const a = t * Math.PI * 0.5;
+      // a slightly conical dome with a rolled rim
+      pts.push(new THREE.Vector2(Math.sin(a) * cr * (1 - 0.06 * t), Math.cos(a) ** 0.85 * cr * 0.78));
     }
-    pts.push(new THREE.Vector2(cr * 0.85, -cr * 0.05), new THREE.Vector2(cr * 0.2, -cr * 0.08));
-    const cap = new THREE.Mesh(new THREE.LatheGeometry(pts, 32), new THREE.MeshPhysicalMaterial({ map: spotsTexture(), roughness: 0.35, clearcoat: 0.5 }));
+    pts.push(new THREE.Vector2(cr * 0.97, -cr * 0.06), new THREE.Vector2(cr * 0.75, -cr * 0.1), new THREE.Vector2(cr * 0.2, -cr * 0.12), new THREE.Vector2(0.0001, -cr * 0.12));
+    const capGeo = new THREE.LatheGeometry(pts, 40);
+    const cap = new THREE.Mesh(capGeo, clay(PALETTE.capRed, { roughness: 0.3, clearcoat: 0.8, rim: 0.35 }));
     cap.position.set(base.x, base.y + h, base.z);
+    cap.rotation.set(rr.range(-0.12, 0.12), rr.range(0, 6.28), rr.range(-0.12, 0.12));
     cap.castShadow = cap.receiveShadow = true;
     cap.userData.nodeId = top.children.find((c) => c.spec.key === 'cap')!.id;
-    const stalkPts = [new THREE.Vector2(0.0001, 0), new THREE.Vector2(cr * 0.32, 0), new THREE.Vector2(cr * 0.26, h * 0.5), new THREE.Vector2(cr * 0.22, h), new THREE.Vector2(0.0001, h)];
-    const stalk = new THREE.Mesh(new THREE.LatheGeometry(stalkPts, 18), new THREE.MeshStandardMaterial({ color: '#efe6d4', roughness: 0.8 }));
+    // raised spots sitting on the cap surface
+    const spotGeos: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < 9; i++) {
+      const a = rr.range(0, Math.PI * 2), t = rr.range(0.08, 0.85);
+      const ang = t * Math.PI * 0.5;
+      const rad = Math.sin(ang) * cr, y = Math.cos(ang) ** 0.85 * cr * 0.78;
+      const g = puff(cr * rr.range(0.1, 0.17), i * 13 + 5, 1);
+      g.scale(1, 0.35, 1);
+      const nrm = new THREE.Vector3(Math.cos(a) * Math.sin(ang), Math.cos(ang), Math.sin(a) * Math.sin(ang)).normalize();
+      g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), nrm));
+      g.translate(Math.cos(a) * rad, y, Math.sin(a) * rad);
+      spotGeos.push(paint(g, PALETTE.capSpot, 0, 0.05));
+    }
+    const spots = new THREE.Mesh(merge(spotGeos), clay('#ffffff', { vertexColors: true, roughness: 0.6, rim: 0.2 }));
+    spots.userData.nodeId = top.children.find((c) => c.spec.key === 'cap')!.children[0]?.id ?? cap.userData.nodeId;
+    cap.add(spots);
+    const stalkPts = [new THREE.Vector2(0.0001, 0), new THREE.Vector2(cr * 0.42, 0.0), new THREE.Vector2(cr * 0.4, h * 0.12), new THREE.Vector2(cr * 0.27, h * 0.35), new THREE.Vector2(cr * 0.23, h * 0.7), new THREE.Vector2(cr * 0.25, h), new THREE.Vector2(0.0001, h)];
+    const stalk = new THREE.Mesh(new THREE.LatheGeometry(stalkPts, 24), clay(PALETTE.stem, { roughness: 0.65, rim: 0.3 }));
     stalk.position.set(base.x, base.y - 0.003, base.z);
     stalk.castShadow = stalk.receiveShadow = true;
     stalk.userData.nodeId = top.children.find((c) => c.spec.key === 'stalk')!.id;
+    // the skirt (ring) just under the cap
+    const skirtPts = [new THREE.Vector2(cr * 0.24, 0), new THREE.Vector2(cr * 0.38, -h * 0.08), new THREE.Vector2(cr * 0.46, -h * 0.2)];
+    const skirt = new THREE.Mesh(new THREE.LatheGeometry(skirtPts, 24), clay(PALETTE.stem, { roughness: 0.65, side: THREE.DoubleSide, rim: 0.2 }));
+    skirt.position.set(0, h * 0.82, 0);
+    skirt.castShadow = true;
+    skirt.userData.nodeId = stalk.userData.nodeId;
+    stalk.add(skirt);
     this.scene.add(cap, stalk);
     this.pickables.push(cap, stalk);
   }
@@ -331,24 +464,26 @@ export class WorldView {
       const { seed, s, yaw } = n.render;
       const r = new Rng(seed);
       const o1 = r.range(0, 10), o2 = r.range(0, 10);
+      // smooth pebble shapes: only low-frequency noise, so they read as soft clay stones
       const g = shapedSphere(36, 24, (v) => {
-        const k = 1 + 0.22 * fbm2(v.x * 1.6 + o1, v.z * 1.6 + v.y * 1.2 + o2, 4, seed % 97) + 0.05 * fbm2(v.x * 6 + o2, v.y * 6, 2, 3);
+        const k = 1 + 0.18 * fbm2(v.x * 1.2 + o1, v.z * 1.2 + v.y * 1.0 + o2, 3, seed % 97);
         return new THREE.Vector3(v.x * k * s * 0.5, v.y * k * s * 0.32, v.z * k * s * 0.46);
       });
       const p = g.attributes.position as THREE.BufferAttribute;
       const nrm = g.attributes.normal as THREE.BufferAttribute;
       const col = new Float32Array(p.count * 3);
       const mossy = n.children.some((c) => c.spec.key === 'moss');
+      const base = jitter(PALETTE.rock, r, 0.02, 0.05, 0.05);
       for (let i = 0; i < p.count; i++) {
-        const v = 0.27 + fbm2(p.getX(i) * 30, p.getZ(i) * 30 + p.getY(i) * 20, 3, 7) * 0.18;
         const up = nrm.getY(i);
-        const m = mossy ? Math.max(0, up - 0.45) * 1.8 : 0;
-        col[i * 3] = v * (1 - m) + 0.22 * m;
-        col[i * 3 + 1] = v * (1 - m) + 0.38 * m;
-        col[i * 3 + 2] = v * 1.02 * (1 - m) + 0.12 * m;
+        const m = mossy ? THREE.MathUtils.smoothstep(up, 0.45, 0.75) : 0;
+        const shade = 0.78 + 0.22 * (up * 0.5 + 0.5);
+        col[i * 3] = (base.r * (1 - m) + PALETTE.moss.r * m) * shade;
+        col[i * 3 + 1] = (base.g * (1 - m) + PALETTE.moss.g * m) * shade;
+        col[i * 3 + 2] = (base.b * (1 - m) + PALETTE.moss.b * m) * shade;
       }
       g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-      const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, bumpMap: noiseTexture(128, seed % 50, 0.5), bumpScale: 2 }));
+      const mesh = new THREE.Mesh(g, clay('#ffffff', { vertexColors: true, roughness: 0.8, rim: 0.3 }));
       mesh.position.set(n.pos.x, n.pos.y - s * 0.08, n.pos.z);
       mesh.rotation.y = yaw;
       mesh.castShadow = mesh.receiveShadow = true;
@@ -361,24 +496,25 @@ export class WorldView {
   private buildPondAndLog() {
     this.waterNormal = waterNormals();
     this.waterNormal.repeat.set(3, 3);
-    const wm = new THREE.MeshPhysicalMaterial({ color: '#1d3b3a', roughness: 0.06, metalness: 0, transparent: true, opacity: 0.82, normalMap: this.waterNormal, normalScale: new THREE.Vector2(0.35, 0.35), clearcoat: 1, clearcoatRoughness: 0.05, ior: 1.33, specularIntensity: 1, envMapIntensity: 1.4 });
+    // seen from above and from below (when a camera dips under the surface)
+    const wm = new THREE.MeshPhysicalMaterial({ color: '#2f8fa0', roughness: 0.08, metalness: 0, transparent: true, opacity: 0.8, normalMap: this.waterNormal, normalScale: new THREE.Vector2(0.3, 0.3), clearcoat: 1, clearcoatRoughness: 0.05, ior: 1.33, specularIntensity: 1, envMapIntensity: 1.2, side: THREE.DoubleSide, depthWrite: false });
     this.water = new THREE.Mesh(new THREE.CircleGeometry(POND.r * 1.02, 64), wm);
     this.water.rotation.x = -Math.PI / 2;
     this.water.position.set(POND.x, WATER_LEVEL, POND.z);
     this.water.receiveShadow = true;
+    this.water.renderOrder = 2;
     this.water.userData.nodeId = this.world.nodes.tops.find((n) => n.entity === 'pond')!.id;
     this.scene.add(this.water);
     this.pickables.push(this.water);
 
     const logN = this.world.nodes.tops.find((n) => n.entity === 'log')!;
     const { L, R, inner, rotY } = logN.render;
-    const bark = new THREE.MeshStandardMaterial({ map: barkTexture(), roughness: 0.95, color: '#a89276', side: THREE.FrontSide });
-    (bark.map as THREE.Texture).repeat.set(3, 1.5);
+    const bark = clay(PALETTE.log, { roughness: 0.8, rim: 0.3 });
     const g = new THREE.Group();
     const outer = new THREE.Mesh(new THREE.CylinderGeometry(R, R * 1.04, L, 36, 6, true), bark);
-    const innerM = new THREE.Mesh(new THREE.CylinderGeometry(inner, inner, L, 28, 1, true), new THREE.MeshStandardMaterial({ color: '#3e2c1c', roughness: 1, side: THREE.BackSide }));
+    const innerM = new THREE.Mesh(new THREE.CylinderGeometry(inner, inner, L, 28, 1, true), clay('#5a3a22', { roughness: 1, side: THREE.BackSide, rim: 0 }));
     const ringG = new THREE.RingGeometry(inner, R, 36, 1);
-    const ringM = new THREE.MeshStandardMaterial({ color: '#b08a5c', roughness: 0.9, side: THREE.DoubleSide, map: noiseTexture(128, 5, 0.3) });
+    const ringM = clay('#e3b981', { roughness: 0.8, side: THREE.DoubleSide, rim: 0.1 });
     const r1 = new THREE.Mesh(ringG, ringM), r2 = new THREE.Mesh(ringG, ringM);
     r1.position.y = L / 2; r1.rotation.x = -Math.PI / 2;
     r2.position.y = -L / 2; r2.rotation.x = Math.PI / 2;
@@ -464,18 +600,18 @@ export class WorldView {
       this.envRT = this.pmrem.fromScene(this.skyScene as unknown as THREE.Scene, 0, 0.1, 1000);
       this.envMap = this.envRT.texture;
       this.scene.environment = this.envMap;
-      this.scene.environmentIntensity = 0.12 + 0.3 * w.sun.ambient;
+      this.scene.environmentIntensity = 0.2 + 0.35 * w.sun.ambient;
     }
     const day = w.sun.ambient;
     const warm = w.sun.warmth;
     this.sun.intensity = (0.35 + 0.65 * Math.max(0, Math.sin(Math.max(0, w.sun.elevation)))) * 2.6 * Math.min(1, day * 1.4);
     this.sun.color.setRGB(1, 0.86 + 0.12 * (1 - warm), 0.72 + 0.26 * (1 - warm));
-    this.hemi.intensity = 0.08 + 0.32 * day;
+    this.hemi.intensity = 0.12 + 0.75 * day;
     this.hemi.color.setRGB(0.55 + 0.2 * day, 0.65 + 0.2 * day, 0.85 + 0.1 * day);
     (this.stars.material as THREE.PointsMaterial).opacity = Math.max(0, 1 - day * 3);
     const fog = this.scene.fog as THREE.FogExp2;
     fog.color.setRGB(0.08 + 0.62 * day + 0.08 * warm, 0.1 + 0.68 * day, 0.16 + 0.68 * day - 0.05 * warm);
-    this.renderer.toneMappingExposure = 0.62 + 0.28 * Math.min(1, day * 1.2) + (day < 0.2 ? 0.6 : 0);
+    this.renderer.toneMappingExposure = 0.78 + 0.22 * Math.min(1, day * 1.2) + (day < 0.2 ? 0.6 : 0);
   }
 
   /** Keep the shadow map centred on what the camera is looking at, so a 12 cm animal gets crisp shadows. */

@@ -16,7 +16,7 @@ const canvas = $('view') as HTMLCanvasElement;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMapping = THREE.NeutralToneMapping; // keeps the cartoon colours saturated
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 
@@ -408,3 +408,4 @@ requestAnimationFrame(frame);
 // for debugging and automated checks
 (window as any).sim = sim;
 (window as any).setMode = setMode;
+(window as any).st = st;

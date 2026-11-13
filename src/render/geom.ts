@@ -25,8 +25,10 @@ export class Tube {
   readonly geometry: THREE.BufferGeometry;
   private pos: Float32Array;
   private nor: Float32Array;
-  constructor(readonly rings: number, readonly sides: number, closeEnd = true) {
-    const vcount = (rings + 1) * (sides + 1) + (closeEnd ? 1 : 0);
+  private closeStart: boolean;
+  constructor(readonly rings: number, readonly sides: number, closeEnd = true, closeStart = false) {
+    this.closeStart = closeStart;
+    const vcount = (rings + 1) * (sides + 1) + (closeEnd ? 1 : 0) + (closeStart ? 1 : 0);
     this.pos = new Float32Array(vcount * 3);
     this.nor = new Float32Array(vcount * 3);
     const uv = new Float32Array(vcount * 2);
@@ -46,6 +48,13 @@ export class Tube {
       for (let s = 0; s < sides; s++) idx.push(rings * (sides + 1) + s, tip, rings * (sides + 1) + s + 1);
       uv[tip * 2] = 0.5;
       uv[tip * 2 + 1] = 1;
+    }
+    if (closeStart) {
+      // a cap over the first ring, so a tube is a solid object you cannot look into
+      const base = vcount - 1;
+      for (let s = 0; s < sides; s++) idx.push(s + 1, base, s);
+      uv[base * 2] = 0.5;
+      uv[base * 2 + 1] = 0;
     }
     this.geometry = new THREE.BufferGeometry();
     this.geometry.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
@@ -86,8 +95,17 @@ export class Tube {
         this.nor[k + 2] = nz;
       }
     }
+    if (this.closeStart) {
+      const k = this.pos.length - 3;
+      const T = centers[1].clone().sub(centers[0]).normalize();
+      const r0 = radiusAt(radii, 0);
+      this.pos[k] = centers[0].x - T.x * r0 * 0.5;
+      this.pos[k + 1] = centers[0].y - T.y * r0 * 0.5;
+      this.pos[k + 2] = centers[0].z - T.z * r0 * 0.5;
+      this.nor[k] = -T.x; this.nor[k + 1] = -T.y; this.nor[k + 2] = -T.z;
+    }
     const tipK = (rings + 1) * (sides + 1) * 3;
-    if (tipK < this.pos.length) {
+    if (tipK < this.pos.length - (this.closeStart ? 3 : 0)) {
       const e = centers[rings], T = e.clone().sub(centers[rings - 1]).normalize();
       const rr = radiusAt(radii, 1);
       this.pos[tipK] = e.x + T.x * rr * 0.6;
@@ -102,7 +120,7 @@ export class Tube {
 }
 
 export function staticTube(points: V3[], radii: number[], rings = 12, sides = 8): THREE.BufferGeometry {
-  const t = new Tube(rings, sides);
+  const t = new Tube(rings, sides, true, true);
   t.update(points, radii);
   return t.geometry;
 }
