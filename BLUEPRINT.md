@@ -62,7 +62,7 @@ Every mechanism below follows from these. When a design question comes up later,
    MOTOR   eyes · head · legs · mouth · tongue · voice ───┘
 ```
 
-Each module owns its own state and is updated separately, on its own clock.
+Each module owns its own state and is updated separately, on its own clock. Each sense works as its own agent: it keeps its own state, decides what is worth reporting, and sends the brain an embedding, not raw data. The brain is where those embeddings meet the body's state and memory.
 
 | Module | State it holds | Listens to | Sends |
 |---|---|---|---|
@@ -231,6 +231,15 @@ So a tree from far away is a coarse "tall green-over-brown thing". Up close it b
 
 Bugs are small agents with their own simple state (an ant follows a trail and carries crumbs, a butterfly drifts between flowers, a wasp patrols and stings when crowded). Their job is to be stimuli with consequences.
 
+### 3.6 The player creature
+
+You enter the world as a second creature that you control. There is no chat window or side channel: everything between you and the creature goes through the simulation.
+
+- **It is an entity like any other.** It has a part tree in the ontology (head, eyes, ears, body, legs, hands or paws, fur), each part with its own embedding and words, so the creature can look at you, lock its gaze on you, notice your details and name you.
+- **It has a smell signature.** You leave smell in the field like any source. How well the creature smells you depends on distance, wind and the strength of its nose.
+- **Your voice is a sound event** at your position. The creature hears you only within range, more faintly with distance, and muffled behind obstacles. Out of range, it does not hear you at all.
+- **You have consequences.** You can bring it food, block its path, startle it or stay calm near it. It learns values about you the same way it learns them about berries and wasps, so it can come to trust you, avoid you, or follow you around.
+
 ---
 
 ## 4. The body
@@ -345,7 +354,7 @@ Each sound event reaches the two ears with slightly different loudness and timin
 
 - **Startle.** A sudden loud onset triggers a reflex before the mind is involved: freeze, orient, arousal spike. Appraisal happens afterward.
 - **Habituation.** Repeated harmless sounds (wind in leaves, water) lose salience over time.
-- **Your voice** is a sound in the world. When you speak, its ears pick it up, attention may shift to it, and it may look toward you before answering. If it is busy running from something, the answer waits.
+- **Your voice** comes from the player creature (3.6), so it is a sound event at your position: heard only within range, quieter with distance, muffled behind obstacles. Attention may shift to it, it may look toward you before answering, and if it is busy running from something the answer waits.
 
 ### 5.5 Mouth, tongue and taste
 
@@ -659,11 +668,17 @@ The structured form is what changes the mind. The words are what you see and hea
 
 ### 10.3 Talking with you
 
+You talk to it as the player creature (3.6). Your words are a sound in the world, and its reply is a sound in the world.
+
 ```
-your words → heard as sound → parsed into an intent
+you speak → sound event at your position → its ears (if in range)
+          → competes for attention → if it wins: parsed into an intent
           → memory lookup → answer intent + retrieved facts
-          → rendered into words → gating check → spoken
+          → speak behavior competes with everything else it wants to do
+          → rendered into words → gating check → spoken aloud at its position
 ```
+
+Speaking is never automatic. It is a potential action like eating or fleeing (the `speak` behavior in 9.2). It can answer late, answer while doing something else, or not answer at all if something more urgent is going on.
 
 Question types to support first: what have you seen, do you know X, did you know (claim), what is X like, where is X, when did you, how do you feel, what are you doing, why did you, do you like X, and plain statements that teach it something.
 
@@ -701,21 +716,41 @@ Because rows are generated from the ontology, coverage is guaranteed: every obje
 
 ### 10.5 The small language model
 
-**Stage 1: the grammar speaks.** The phrase bank renders thoughts directly. This already works and is the permanent fallback.
+The language model is not a separate chatbot bolted on. It reads the creature's state directly, so what it says is tied to what its senses and body are doing at that moment.
 
-**Stage 2: a tiny model learns from the grammar.** A small transformer (a few million parameters, word-level vocabulary of innate words + world words + state tokens) is trained on rows serialized as:
+**Stage 1: the grammar speaks.** The phrase bank renders thoughts directly. It works from day one, it is the teacher for the model, and it stays as the fallback.
 
-```
-<mood:curious> <intent:COMPARE> <obj:leaf> <attr:color=green> <ref:grass> <sep>
-im tryna really see what this is .. its the same color as grass .. so its green
-```
+**Stage 2: pretraining on the world.** A small transformer is pretrained on text about everything in the environment, generated from the ontology: what trees are, what their parts are, what ants do, what berries taste like, how water behaves. This gives the model language and an understanding of the world's concepts and how they relate.
 
-At runtime the mind writes the prefix from the triggering event and the retrieved facts, and the model writes the words. What the model adds over the grammar: blending several intents in one breath, smoother variation, and tolerance for loosely phrased questions.
+**Stage 3: thoughts conditioned on state.** Each sense agent and body system produces an embedding every slow tick:
 
-Two safeguards keep it honest:
+| Source | Embedding carries |
+|---|---|
+| Vision | current focus percept, resolved parts, gaze mode |
+| Smell, hearing, taste, touch | current percepts |
+| Body | energy, hydration, pain, fatigue, temperature |
+| Feelings | arousal, valence, fear, curiosity |
+| Memory | retrieved episodes and facts, with their source (seen, told, ...) |
+| Trigger | which thought trigger fired, and its intensity |
 
-- **Slot shuffling in training.** A share of rows use deliberately wrong combinations (a purple leaf, a sweet rock). The model learns to copy facts from the prefix and cannot rely on "leaves are green" being baked into its weights.
-- **Masked decoding.** World words not present in the prefix or the lexicon cannot be emitted, then the reply is validated (8.5).
+A small learned adapter per source turns its embedding into a few input tokens for the model. The model reads those tokens and writes the thought. Sight, smell, body and memory enter the model as signals, not as text descriptions of themselves.
+
+**Training data is produced by the simulation itself.** Run the creature through many lives. At every thought trigger, log the full state embeddings and the grammar's rendering of that moment. That gives millions of (state → thought) pairs covering every object, part and situation the world contains. The model is fine-tuned on these.
+
+**Knowing vs. having seen.** After pretraining, the model knows ants have hairy legs. Memory may say the creature has never seen that. The rule is that **anything stated as its own experience must come from the memory tokens**. Training enforces it: many rows give the model a question whose answer it knows from pretraining, alongside memory tokens that lack the fact, with the target reply "nah i havent seen that yet". The model learns that pretrained knowledge is not experience.
+
+Pretrained knowledge still matters, because it is where emergence in conversation comes from. It lets the creature connect what it has seen to questions it was never trained on: asked "is a tree alive?", it can reason from what it has seen ("it got leaves that move .. and it be growin .. so i think so?"). That kind of reasoning is marked as a guess, never as something it saw.
+
+**Observation updates expression at two speeds.**
+
+- **Instantly:** memory updates as it observes, and the memory tokens change with it. What it saw a minute ago is already sayable.
+- **Overnight:** during sleep (8.6), the model is lightly fine-tuned on that day's own logged thoughts and conversations, so its phrasing drifts to become its own over time.
+
+**Safeguards.**
+
+- **Slot shuffling in training.** A share of rows use deliberately wrong state (a purple leaf, a sweet rock). The model learns to follow its state and cannot fall back on what pretraining says leaves usually are.
+- **Masked decoding.** World words that are not in its lexicon and were not just said to it cannot be emitted.
+- **Validation.** Every reply is checked against memory before it is spoken (8.5).
 
 ### 10.6 Not sounding like a recording
 
@@ -834,7 +869,7 @@ Small things that make it read as alive. All are consequences of states already 
 **Recommended:**
 
 - **Simulation core in Python.** World, body, senses, mind, memory, grammar, dataset generator and model training all in one language. It runs headless on a fixed tick with a seed, so it can be tested automatically and run faster than real time (the creature can live a week overnight).
-- **Viewer in the browser (Three.js)**, connected over a WebSocket. It renders the world and creature and shows the mind: gaze ray, salience bars, drive meters, current focus, thought stream, the knowledge graph, and a chat box. It also shows a discovery meter (facts found out of facts that exist in the ontology).
+- **Viewer in the browser (Three.js)**, connected over a WebSocket. It renders the world and creature and shows the mind: gaze ray, salience bars, drive meters, current focus, thought stream and the knowledge graph. You move the player creature with the keyboard and speak through it with text or microphone. It also shows a discovery meter (facts found out of facts that exist in the ontology).
 - **Ontology in YAML.** The single source of truth.
 - **The mind does not depend on the renderer.** It takes percepts in and sends motor commands out, so the 3D side can later move to a game engine without touching the mind.
 
@@ -842,6 +877,7 @@ Small things that make it read as alive. All are consequences of states already 
 ontology/            entities, parts, attributes, words
 sim/
   world/             scene graph, fields (light, smell, sound), weather, bug agents
+  player/            the player creature: body, smell, voice, controls
   creature/
     body.py
     senses/          vision, smell, hearing, taste, touch, interoception
@@ -875,8 +911,8 @@ Each stage is usable on its own and has a test that defines "done".
 | 3 | Body, drives, reflexes, mouth. Hunger, thirst, pain, tasting. | Left alone it gets hungry, tastes things, finds the berries and survives a day. Time-to-dodge a repeated hazard shortens. |
 | 4 | Memory, concepts, naming, thought stream (grammar only). | First tree is named once. Second tree is recognized, not renamed. The knowledge graph holds only what it got close enough to notice. |
 | 5 | Smell, hearing, association and recall. | The smell of hidden berries draws it in and triggers a recall thought. It turns toward sounds. After one sting it flinches at buzzing. |
-| 6 | Dialogue and knowledge gating. | The ant-hair question flips from "havent seen that" to "yea i seen it" only after a close inspection. Across a thousand random questions, no answer contains an undiscovered word or fact. |
-| 7 | Dataset generator and the small model. | Model replies pass the same no-leak test, phrasing rarely repeats, and fallback to the grammar is rare. |
+| 6 | Player creature, dialogue and knowledge gating. | It hears you only within range and sometimes looks at you before answering. The ant-hair question flips from "havent seen that" to "yea i seen it" only after a close inspection. Across a thousand random questions, no answer contains an undiscovered word or fact. |
+| 7 | World pretraining, sim-logged corpus, state-conditioned model. | Model replies pass the same no-leak test, phrasing rarely repeats, fallback to the grammar is rare, and it answers questions it was never trained on by reasoning from what it saw. |
 | 8 | Day/night, weather, shelter, sleep and consolidation. | It heads for shelter before dark and remembers yesterday after sleeping. |
 | 9 | Generations. | Later generations survive longer from birth than the first. |
 
@@ -933,3 +969,4 @@ All of these are starting points to be tuned by watching the creature.
 2. **The creature's form.** The blueprint assumes a small four-legged animal about 12 cm long with forward-facing eyes, movable ears, a nose and a tongue. Any body with those parts works.
 3. **How much inner voice is shown.** Always-visible thought stream, or thoughts only when it speaks aloud.
 4. **Voice.** The phrase bank will be written in the casual register used in the examples above unless a different one is wanted.
+5. **How much pretrained knowledge may surface.** The design lets it reason from pretraining as long as it marks that as a guess. The stricter option is to allow only reasoning that starts from something it has seen.
