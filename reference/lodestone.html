@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lodestone Cognitive Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a lab bench. One live specimen on top (world + instrument panel), then the method, then the measured result. */
+:root{
+  --bg:#f3f4f6; --surface:#ffffff; --ink:#151a21; --muted:#596271; --line:#dcdfe5; --accent:#a8431a;
+  --fog:#c9cdd4; --wall:#3c4350; --cell:#fafbfc;
+  --o1:#2a78d6; --o2:#1baf7a; --o3:#eda100; --o4:#e87ba4;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4;
+  --good:#17804f; --bad:#c0392f;
+  --display:"Sora","Segoe UI",system-ui,sans-serif;
+  --body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#101317; --surface:#181c22; --ink:#e9ebef; --muted:#9aa3b0; --line:#2b313a; --accent:#e58a57;
+    --fog:#0a0c0f; --wall:#8a93a1; --cell:#1e232a;
+    --o1:#3987e5; --o2:#199e70; --o3:#c98500; --o4:#d55181;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+    --good:#4cc38a; --bad:#f0736a;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#101317; --surface:#181c22; --ink:#e9ebef; --muted:#9aa3b0; --line:#2b313a; --accent:#e58a57;
+  --fog:#0a0c0f; --wall:#8a93a1; --cell:#1e232a;
+  --o1:#3987e5; --o2:#199e70; --o3:#c98500; --o4:#d55181;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+  --good:#4cc38a; --bad:#f0736a;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 var(--body)}
+main{max-width:1120px;margin:0 auto;padding:28px 20px 64px;display:flex;flex-direction:column;gap:36px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(30px,5vw,44px);letter-spacing:-.02em}
+h2{font-size:24px}
+h3{font-size:15px;font-family:var(--body);font-weight:600}
+p{margin:0;max-width:65ch}
+.lede{font-size:18px;color:var(--muted);margin-top:10px}
+.tag{font:500 12px var(--mono);color:var(--accent);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
+section{display:flex;flex-direction:column;gap:16px}
+.bench{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(280px,1fr);gap:16px;align-items:start}
+@media (max-width:860px){.bench{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+canvas{display:block;width:100%;border-radius:6px;cursor:crosshair;touch-action:manipulation}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,select{font:500 14px var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:7px 12px;cursor:pointer}
+button:hover,select:hover{border-color:var(--muted)}
+button.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button:focus-visible,select:focus-visible,canvas:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+label.chk{display:flex;gap:6px;align-items:center;font-size:14px;color:var(--muted)}
+.hint{font-size:13px;color:var(--muted)}
+.gauge{display:grid;grid-template-columns:86px 1fr 44px;gap:10px;align-items:center;font-size:14px}
+.gauge .track{height:10px;background:var(--bg);border-radius:5px;overflow:hidden;border:1px solid var(--line)}
+.gauge .fill{height:100%;background:var(--ink);border-radius:5px;width:0}
+.gauge .fill.low{background:var(--bad)}
+.gauge .num{font:500 13px var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+#intent{font-size:15px;min-height:3.1em}
+#intent b{font-weight:600}
+.pill{display:inline-block;font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted);margin-right:6px}
+.pill.dead{color:var(--bad);border-color:var(--bad)}
+#log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13.5px;min-height:150px}
+#log li{display:grid;grid-template-columns:52px 1fr;gap:8px}
+#log .t{font:12px var(--mono);color:var(--muted);padding-top:2px}
+#log li.hot .m{color:var(--accent)}
+.beliefs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media (max-width:620px){.beliefs{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kind{border:1px solid var(--line);border-radius:8px;padding:8px 10px;display:grid;grid-template-columns:26px 1fr;gap:4px 8px;align-items:center;font-size:13px}
+.kind .nm{font-weight:500;line-height:1.2}
+.kind .vals{grid-column:1/-1;font:12.5px var(--mono);font-variant-numeric:tabular-nums;display:flex;flex-direction:column;gap:1px}
+.kind .vals span{display:flex;justify-content:space-between}
+.kind .truth{color:var(--muted)}
+.kind .state{grid-column:1/-1;font:500 10.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.kind .cert{grid-column:1/-1;height:4px;background:var(--bg);border-radius:2px;overflow:hidden}
+.kind .cert i{display:block;height:100%;background:var(--accent)}
+.pos{color:var(--good)} .neg{color:var(--bad)}
+ol.cycle{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;counter-reset:c}
+ol.cycle li{counter-increment:c;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-size:14.5px}
+ol.cycle li::before{content:counter(c);font:500 12px var(--mono);color:var(--accent);display:block;margin-bottom:4px}
+ol.cycle h3{margin-bottom:4px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px}
+.two ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:15px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13.5px}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:14px;height:3px;border-radius:2px;display:inline-block}
+.chartwrap{position:relative;overflow-x:auto}
+#chart{display:block;width:100%;min-width:520px;height:auto}
+#tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.12);display:none;white-space:nowrap}
+#tip div{display:flex;gap:8px;align-items:center;justify-content:space-between}
+#tip i{width:10px;height:3px;display:inline-block;border-radius:2px;margin-right:6px}
+#tip b{font:500 12px var(--mono)}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:520px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+th{font-weight:500;color:var(--muted);font-size:13px}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+td i{width:12px;height:3px;display:inline-block;border-radius:2px;margin-right:8px;vertical-align:middle}
+#prog{font:13px var(--mono);color:var(--muted)}
+.foot{font-size:14px;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="tag">Cognitive architecture · no neural network</div>
+  <h1>Lodestone</h1>
+  <p class="lede">A mind made of a few hundred numbers. It starts knowing nothing, works out what feeds it and what hurts it, sets its own goals, and notices when the world's rules change underneath it.</p>
+</header>
+
+<section aria-labelledby="h-live">
+  <h2 id="h-live">Watch one live</h2>
+  <p>The dark dot is the agent. Each coloured shape does something to its body when touched, by hidden rules that are different in every world. It senses only the 7×7 cells around it. Grey fog is ground it has never seen.</p>
+  <div class="bench">
+    <div class="card">
+      <canvas id="world" tabindex="0" aria-label="Grid world with the agent, walls and coloured shapes"></canvas>
+      <div class="controls">
+        <button id="play" class="primary">Pause</button>
+        <button id="step">Step once</button>
+        <select id="speed" aria-label="Speed">
+          <option value="4">Slow</option><option value="12" selected>Normal</option><option value="45">Fast</option><option value="240">Very fast</option>
+        </select>
+        <button id="shift">Change the hidden rules</button>
+        <button id="neww">New world</button>
+        <button id="wipe">Wipe its memory</button>
+      </div>
+      <div class="hint">Click any cell to add or remove a wall. It will find out when it next looks.</div>
+    </div>
+    <div class="card">
+      <div class="gauge"><span>Energy</span><div class="track"><div class="fill" id="gE"></div></div><span class="num" id="nE"></span></div>
+      <div class="gauge"><span>Integrity</span><div class="track"><div class="fill" id="gI"></div></div><span class="num" id="nI"></span></div>
+      <div class="gauge"><span>Unknowns</span><div class="track"><div class="fill" id="gU"></div></div><span class="num" id="nU"></span></div>
+      <div id="intent"></div>
+      <h3>What just changed its mind</h3>
+      <ul id="log"></ul>
+      <div class="hint" id="foot"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="controls" style="justify-content:space-between">
+      <h3>What it currently expects from each kind of object</h3>
+      <label class="chk" for="truth"><input type="checkbox" id="truth"> Show the hidden truth</label>
+    </div>
+    <div class="beliefs" id="beliefs"></div>
+    <div class="hint">The bar is how sure it is. "Inferred" means it has never touched that kind and is reasoning from colour and shape alone.</div>
+  </div>
+</section>
+
+<section aria-labelledby="h-how">
+  <h2 id="h-how">How it works</h2>
+  <p>One cycle per step. Nothing is trained in advance, and there are no weights, layers or gradients. The agent's only data is what happens to its own body.</p>
+  <ol class="cycle">
+    <li><h3>Feel</h3>Two body levels, energy and integrity, are turned into distress: zero when full, rising steeply near empty. Distress is the only thing the agent cares about. It is never given a score or a goal.</li>
+    <li><h3>Remember in two speeds</h3>Every belief (what a colour, a shape, or an exact kind does to each level) keeps a slow average and its latest experience. When the two disagree by more than that belief's usual scatter, the belief is in dissent and the latest experience is trusted.</li>
+    <li><h3>Fold</h3>Two dissents in a row and the belief folds: the old average is thrown away. If it was a long-held rule, that counts as an upheaval. Everything learned before it is demoted to rumour and becomes worth re-testing.</li>
+    <li><h3>Predict by vote</h3>For any object, the exact kind, its colour and its shape each vote, weighted by how consistent their history is. A feature that has never made a difference abstains. An untried kind is only as well known as its least-known feature.</li>
+    <li><h3>Be pulled</h3>Every remembered place pulls on the agent: objects by the distress they are expected to remove plus what could be learned, unseen and long-unvisited ground by how urgent things are. Distance weakens the pull. The strongest pull becomes the goal.</li>
+    <li><h3>Stay alive while learning</h3>It learns which needs get worse by waiting (hunger) and which recover (injury). It will not experiment when the worst thing it has ever felt could finish off a need that would heal on its own.</li>
+  </ol>
+</section>
+
+<section aria-labelledby="h-exp">
+  <h2 id="h-exp">The experiment</h2>
+  <p>Forty generated worlds, 3,000 steps each. Halfway through, the hidden rules are reshuffled without warning, so the best food and the dangerous shape both change. Five agents live in the same forty worlds. This runs in your browser when the page loads; none of these worlds were used while the design was being tuned.</p>
+  <div class="card">
+    <div class="controls" style="justify-content:space-between">
+      <div class="legend" id="legend"></div>
+      <div class="controls"><span id="prog"></span><button id="rerun">Run again</button></div>
+    </div>
+    <div class="chartwrap"><svg id="chart" viewBox="0 0 760 320" role="img" aria-label="Share of worlds in which each agent is still alive, by step"></svg><div id="tip"></div></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Agent</th><th class="n">Alive at step 1,500</th><th class="n">Alive at step 3,000</th><th class="n">Median lifespan</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table></div>
+    <div class="hint">The two stripped-down versions show what each idea contributes. Without generalising, every kind must be learned by touching it. Without dissent, beliefs are plain long-run averages that cannot let go of an outdated rule fast enough.</div>
+  </div>
+</section>
+
+<section aria-labelledby="h-diff">
+  <h2 id="h-diff">How it differs, and what it is for</h2>
+  <div class="two">
+    <div class="card"><h3>Compared with other approaches</h3><ul>
+      <li>Neural networks learn from large datasets by adjusting many weights. Lodestone has none; it learns a rule from one or two experiences and you can read every belief it holds.</li>
+      <li>Reinforcement learners maximise a reward signal someone defined. Lodestone has no reward, value table or policy. Behaviour falls out of body distress and doubt.</li>
+      <li>Classic symbolic architectures such as Soar and ACT-R run on hand-written production rules. Lodestone is given no rules about its world.</li>
+      <li>Most learners treat change as noise to average away. Here disagreement between old and new memory is the central signal: it sets what to trust, what to doubt and what to re-test.</li>
+    </ul></div>
+    <div class="card"><h3>Where a design like this fits</h3><ul>
+      <li>Small devices and robots with a battery, wear limits and no room for a model: learn which actions drain or damage them and adapt when conditions change.</li>
+      <li>Game characters and simulated creatures that need believable, self-motivated behaviour at almost no cost.</li>
+      <li>Monitoring agents that must notice that a familiar pattern has stopped holding, and say which belief broke.</li>
+      <li>Teaching and research: a complete agent small enough to read in one sitting.</li>
+    </ul></div>
+    <div class="card"><h3>Footprint</h3><ul>
+      <li>The whole mind and world: about 13 KB of plain JavaScript, no libraries.</li>
+      <li id="memline">Learned state: a few hundred numbers.</li>
+      <li>One decision costs one pass over the map. A full 3,000-step life runs in a fraction of a second on a laptop.</li>
+    </ul></div>
+    <div class="card"><h3>Limits, stated plainly</h3><ul>
+      <li>It has been tested only in this grid world. It does not handle language, images or long-range planning.</li>
+      <li>It does not always survive. Some worlds starve it before it finds food, and a rule change can hurt it three times before it has re-learned enough.</li>
+      <li>The design is original as a whole, but its parts have relatives: drive-based agents, weighting cues by reliability, change detection. Its building blocks are ordinary ones: running averages, a shortest-path search, a logarithm.</li>
+    </ul></div>
+  </div>
+</section>
+</main>
+
+<script>
+/* ===== LODESTONE core: world + mind. No libraries, no neural network. ===== */
+const W = 24, H = 16, N = W * H, NC = 4, NS = 3, NK = NC * NS, VIS = 3;
+const DX = [0, 1, 0, -1, 0], DY = [-1, 0, 1, 0, 0];
+const clamp = v => v < 0 ? 0 : v > 100 ? 100 : v;
+/* Distress: zero when a body level is full, climbs steeply as it nears empty. */
+const phi = l => -Math.log((l + 2) / 102);
+
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function shuffle(a, r) {
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; }
+  return a;
+}
+
+/* ---------- World: generated from a seed, hidden rules the agent is never told ---------- */
+function setRules(w) {
+  const p = w.rules; let colE, shpI;
+  for (;;) {
+    colE = shuffle([28, 14, 0, -18], w.r); shpI = shuffle([12, 0, -35], w.r);
+    if (!p || (colE.indexOf(28) !== p.colE.indexOf(28) && shpI.indexOf(-35) !== p.shpI.indexOf(-35))) break;
+  }
+  const exc = Math.floor(w.r() * NK);
+  const good = colE[Math.floor(exc / NS)] > 0 && shpI[exc % NS] >= 0;
+  w.rules = { colE, shpI, exc, excE: good ? -20 : 30, excI: good ? -25 : 10 };
+}
+function effect(w, k) {
+  const R = w.rules;
+  if (k === R.exc) return { E: R.excE, I: R.excI };
+  return { E: R.colE[Math.floor(k / NS)], I: R.shpI[k % NS] };
+}
+function flood(w, s) {
+  w.ok.fill(0); if (w.wall[s]) return 0;
+  const q = [s]; w.ok[s] = 1; let n = 0;
+  while (q.length) {
+    const u = q.pop(); n++; const x = u % W, y = (u - x) / W;
+    for (let d = 0; d < 4; d++) {
+      const nx = x + DX[d], ny = y + DY[d];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const v = ny * W + nx; if (w.ok[v] || w.wall[v]) continue; w.ok[v] = 1; q.push(v);
+    }
+  }
+  return n;
+}
+function spawn(w, k, avoid) {
+  for (let i = 0; i < 800; i++) {
+    const c = Math.floor(w.r() * N);
+    if (w.ok[c] && w.obj[c] < 0 && c !== avoid) { w.obj[c] = k; return c; }
+  }
+  return -1;
+}
+function makeWorld(seed, nObj) {
+  const r = rng(seed);
+  const w = { r, wall: new Uint8Array(N), obj: new Int8Array(N).fill(-1), ok: new Uint8Array(N), t: 0, rules: null, start: 0 };
+  for (let i = 0; i < 16; i++) {
+    const x = 1 + Math.floor(r() * (W - 2)), y = 1 + Math.floor(r() * (H - 2));
+    const dx = r() < 0.5 ? 1 : 0, dy = 1 - dx, len = 2 + Math.floor(r() * 4);
+    for (let k = 0; k < len; k++) { const xx = x + dx * k, yy = y + dy * k; if (xx < W && yy < H) w.wall[yy * W + xx] = 1; }
+  }
+  let free = 0; for (let i = 0; i < N; i++) if (!w.wall[i]) free++;
+  let s = -1;
+  for (let t = 0; t < 300 && s < 0; t++) { const c = Math.floor(r() * N); if (!w.wall[c] && flood(w, c) >= 0.6 * free) s = c; }
+  if (s < 0) { w.wall.fill(0); s = 0; flood(w, 0); }
+  w.start = s;
+  setRules(w);
+  for (let i = 0; i < (nObj || 28); i++) spawn(w, i % NK, s);
+  return w;
+}
+function makeBody(w) { return { x: w.start % W, y: Math.floor(w.start / W), E: 60, I: 100, dead: false }; }
+const STEP_COST = 0.5, REST_COST = 0.25, HEAL = 0.05;
+function stepWorld(w, a, mv) {
+  w.t++;
+  let nx = a.x + DX[mv], ny = a.y + DY[mv], moved = mv !== 4;
+  if (!moved || nx < 0 || ny < 0 || nx >= W || ny >= H || w.wall[ny * W + nx]) { nx = a.x; ny = a.y; moved = false; }
+  a.x = nx; a.y = ny;
+  let dE = moved ? -STEP_COST : -REST_COST, dI = HEAL, touched = -1;
+  const i = ny * W + nx;
+  if (moved && w.obj[i] >= 0) {
+    touched = w.obj[i]; const e = effect(w, touched); dE += e.E; dI += e.I;
+    w.obj[i] = -1; spawn(w, touched, i);
+  }
+  a.E = clamp(a.E + dE); a.I = clamp(a.I + dI);
+  if (a.E <= 0 || a.I <= 0) a.dead = true;
+  return { touched, moved };
+}
+
+/* ---------- Mind ---------- */
+function newRec() { return { n: 0, fast: 0, slow: 0, spread: 0, dis: 0, t: -1, dt: -1, est: false }; }
+function makeMind(opts) {
+  return {
+    opts: Object.assign({ dissent: true, general: true, greedy: false }, opts),
+    rec: {},                                   // key -> [energy record, integrity record]
+    seen: new Int32Array(N).fill(-1),          // when each cell was last sensed
+    memWall: new Uint8Array(N), memObj: new Int8Array(N).fill(-1),
+    dist: new Int16Array(N), first: new Int8Array(N), queue: new Int16Array(N),
+    t: 0, era: -1, worst: [0, 0], target: -1, intent: { type: 'rest', cell: -1, kind: -1 }, events: null
+  };
+}
+function getRec(m, key) { return m.rec[key] || (m.rec[key] = [newRec(), newRec()]); }
+function belief(m, r) { return r.n === 0 ? 0 : (m.opts.dissent && r.dis > 0 ? r.fast : r.slow); }
+function weight(m, r) {
+  if (r.n === 0) return 0;
+  const w = Math.min(r.n, 20) / (r.spread + 0.5);
+  return r.t < m.era ? Math.min(w, 0.2) : w;      // evidence from before an upheaval is only a rumour
+}
+
+/* One observation into one record. Returns 0 nothing, 1 dissent, 2 fold, 3 fold of an established belief. */
+function observe(m, r, obs, censored) {
+  if (r.n === 0) { r.n = 1; r.fast = r.slow = obs; r.spread = 0; r.dis = 0; r.t = m.t; return 0; }
+  if (censored && belief(m, r) >= obs) return 0;   // a full gauge cannot tell how big the gain was
+  const err = Math.abs(obs - r.slow);
+  r.fast = obs;                                   // the quick memory is simply the latest experience
+  if (m.opts.dissent && Math.abs(r.fast - r.slow) > r.spread + 3) {
+    if (r.dis === 0) { r.dt = m.t; r.est = r.n >= 4; }
+    r.dis++;
+  } else r.dis = 0;
+  r.n++; r.t = m.t;
+  r.spread += Math.max(1 / r.n, 0.1) * (err - r.spread);
+  r.slow += Math.max(1 / r.n, 0.05) * (obs - r.slow);
+  if (r.dis >= 2) {
+    const est = r.est;
+    r.slow = r.fast = obs; r.n = 1; r.dis = 0; r.spread = 0;
+    return est ? 3 : 2;
+  }
+  return r.dis > 0 ? 1 : 0;
+}
+
+/* A feature that has never made a difference abstains instead of voting "harmless". */
+const voice = b => Math.abs(b) / (Math.abs(b) + 3);
+
+/* What does the mind expect from touching kind k?  Votes: the exact kind, its colour, its shape. */
+function predict(m, k) {
+  const c = Math.floor(k / NS), s = k % NS, out = { E: 0, I: 0, uE: 1, uI: 1, u: 1 };
+  const kr = m.rec['k' + k], cr = m.opts.general ? m.rec['c' + c] : null, sr = m.opts.general ? m.rec['s' + s] : null;
+  for (let j = 0; j < 2; j++) {
+    let sw = 0, sb = 0, wk = 0, wc = 0, ws = 0;
+    if (kr) {
+      let w = 3 * weight(m, kr[j]);
+      if (cr && cr[j].dis > 0 && cr[j].est && kr[j].t < cr[j].dt) w *= 0.01;  // evidence older than a live doubt
+      if (sr && sr[j].dis > 0 && sr[j].est && kr[j].t < sr[j].dt) w *= 0.01;
+      wk = w; sw += w; sb += w * belief(m, kr[j]);
+    }
+    if (cr) { const b = belief(m, cr[j]), w = (wc = weight(m, cr[j])) * voice(b); sw += w; sb += w * b; }
+    if (sr) { const b = belief(m, sr[j]), w = (ws = weight(m, sr[j])) * voice(b); sw += w; sb += w * b; }
+    /* The "1" is a standing vote for "nothing happens". An untried kind is only as well known as its
+       least-known feature, so one familiar feature cannot vouch for the whole thing. */
+    const p = sb / (1 + sw), u = 1 / (1 + wk + Math.min(wc, ws));
+    if (j === 0) { out.E = p; out.uE = u; } else { out.I = p; out.uI = u; }
+  }
+  out.u = (out.uE + out.uI) / 2;
+  return out;
+}
+
+function perceive(m, w, a) {
+  for (let y = Math.max(0, a.y - VIS); y <= Math.min(H - 1, a.y + VIS); y++)
+    for (let x = Math.max(0, a.x - VIS); x <= Math.min(W - 1, a.x + VIS); x++) {
+      const i = y * W + x; m.seen[i] = m.t; m.memWall[i] = w.wall[i]; m.memObj[i] = w.obj[i];
+    }
+}
+
+const CURIOSITY = 0.5, FRONTIER = 0.15, PATROL = 0.08, FLOOR = 0.02, REACH = 8, STALE = 400;
+function decide(m, a) {
+  const s = a.y * W + a.x, dist = m.dist, first = m.first, q = m.queue;
+  dist.fill(-1); dist[s] = 0; let qh = 0, qt = 0; q[qt++] = s;
+  while (qh < qt) {
+    const u = q[qh++], ux = u % W, uy = (u - ux) / W, d = dist[u] + 1;
+    for (let k = 0; k < 4; k++) {
+      const nx = ux + DX[k], ny = uy + DY[k];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const v = ny * W + nx; if (dist[v] >= 0) continue;
+      if (m.seen[v] >= 0 && m.memWall[v]) continue;
+      dist[v] = d; first[v] = u === s ? k : first[u];
+      if (m.seen[v] >= 0 && m.memObj[v] < 0) q[qt++] = v;   // never walk through objects or the unknown
+    }
+  }
+  const base = m.rec.base, stepE = base ? belief(m, base[0]) : 0;
+  const stepI = base ? belief(m, base[1]) : 0;
+  /* Urgency comes only from needs that waiting makes worse (it learns which those are). */
+  const search = 1 + (stepE < 0 ? phi(a.E) : 0) + (stepI < 0 ? phi(a.I) : 0);
+  let best = FLOOR, bc = -1, bt = 'rest', bk = -1;
+  for (let v = 0; v < N; v++) {
+    const d = dist[v]; if (d <= 0) continue;
+    let pull, type, kind = -1;
+    if (m.seen[v] < 0) { pull = FRONTIER * search; type = 'explore'; }
+    else if (m.memObj[v] >= 0) {
+      kind = m.memObj[v];
+      if (m.opts.greedy) { pull = 1; type = 'eat'; }
+      else {
+        const p = predict(m, kind), Ea = clamp(a.E + stepE * d);
+        const gain = phi(Ea) - phi(clamp(Ea + p.E)) + phi(a.I) - phi(clamp(a.I + p.I));
+        /* Never experiment when the worst it has ever felt could finish it, unless waiting is killing it anyway. */
+        const safe = !(stepE >= 0 && Ea + p.E + m.worst[0] * p.uE <= 10) && !(stepI >= 0 && a.I + p.I + m.worst[1] * p.uI <= 10);
+        const know = safe ? CURIOSITY * p.u * search : 0;
+        pull = gain + know; type = know > Math.abs(gain) ? 'test' : 'eat';
+      }
+    } else { pull = PATROL * search * Math.min(1, (m.t - m.seen[v]) / STALE); type = 'patrol'; }
+    pull /= 1 + d / REACH;
+    if (v === m.target) pull *= 1.2;
+    if (pull > best) { best = pull; bc = v; bt = type; bk = kind; }
+  }
+  m.target = bc; m.intent = { type: bt, cell: bc, kind: bk, pull: best };
+  return bc < 0 ? 4 : first[bc];
+}
+
+/* After the body reports what changed, file the experience. */
+function learn(m, a, moved, kind, dE, dI) {
+  if (!moved) return;
+  const cE = a.E >= 100, cI = a.I >= 100, base = getRec(m, 'base');
+  if (kind < 0) { observe(m, base[0], dE, cE); observe(m, base[1], dI, cI); return; }
+  const obs = [dE - belief(m, base[0]), dI - belief(m, base[1])], cens = [cE, cI];
+  const c = Math.floor(kind / NS), s = kind % NS;
+  const kr = getRec(m, 'k' + kind), wasNew = kr[0].n === 0;
+  let upheaval = false;
+  let note = wasNew ? 'first' : '', doubted = [];
+  for (let j = 0; j < 2; j++) if (!cens[j] && obs[j] < m.worst[j]) m.worst[j] = obs[j];
+  for (let j = 0; j < 2; j++) {
+    const r0 = observe(m, kr[j], obs[j], cens[j]);
+    if (r0 && !note) note = 'surprise';
+    if (r0 === 3) upheaval = true;
+    if (!m.opts.general) continue;
+    const keys = ['c' + c, 's' + s];
+    for (let a2 = 0; a2 < 2; a2++) {
+      const code = observe(m, getRec(m, keys[a2])[j], obs[j], cens[j]);
+      if (code === 3) {   // an established rule just broke: drop older specifics that leaned on it
+        doubted.push(keys[a2]); upheaval = true;
+        for (let k = 0; k < NK; k++) {
+          if (k === kind) continue;
+          if ((a2 === 0 ? Math.floor(k / NS) === c : k % NS === s) && m.rec['k' + k]) m.rec['k' + k][j] = newRec();
+        }
+      }
+    }
+  }
+  if (upheaval) {       // the world has changed: settle every pending doubt, demote everything older to rumour
+    m.era = m.t;
+    for (const key in m.rec) for (let j = 0; j < 2; j++) {
+      const r = m.rec[key][j];
+      if (r.dis > 0) { r.slow = r.fast; r.n = 1; r.spread = 0; r.dis = 0; r.t = m.t; }
+    }
+  }
+  if (m.events) m.events.push({ t: m.t, kind, E: obs[0], I: obs[1], note, doubted });
+}
+
+function tick(m, w, a) {
+  perceive(m, w, a);
+  const mv = decide(m, a), pE = a.E, pI = a.I;
+  const dest = (a.y + DY[mv]) * W + a.x + DX[mv];
+  const expected = mv < 4 && dest >= 0 && dest < N ? m.memObj[dest] : -1;
+  const res = stepWorld(w, a, mv);
+  if (res.moved && expected >= 0) m.memObj[a.y * W + a.x] = -1;
+  learn(m, a, res.moved, res.moved ? expected : -1, a.E - pE, a.I - pI);
+  m.t++;
+}
+
+/* ---------- Experiment: same worlds, five agents ---------- */
+const AGENTS = [
+  { id: 'full', name: 'Lodestone', opts: {} },
+  { id: 'nogen', name: 'Lodestone without generalising', opts: { general: false } },
+  { id: 'nodis', name: 'Lodestone without dissent', opts: { dissent: false } },
+  { id: 'greedy', name: 'Eat the nearest thing', opts: { greedy: true } },
+  { id: 'random', name: 'Random walk', opts: null }
+];
+function runLife(seed, agent, horizon, shiftAt) {
+  const w = makeWorld(seed), a = makeBody(w), m = agent.opts ? makeMind(agent.opts) : null, r = rng(seed * 7919 + 13);
+  let t = 0;
+  while (t < horizon && !a.dead) {
+    if (t === shiftAt) setRules(w);
+    if (m) tick(m, w, a); else stepWorld(w, a, Math.floor(r() * 4));
+    t++;
+  }
+  return t;
+}
+if (typeof module !== 'undefined') module.exports = { W, H, N, NK, NS, NC, makeWorld, makeBody, makeMind, tick, predict, effect, setRules, runLife, AGENTS, stepWorld, rng };
+
+</script>
+<script>
+(function(){
+const COL=['blue','green','yellow','pink'], SHP=['circle','square','triangle'];
+const kindName=k=>COL[Math.floor(k/NS)]+' '+SHP[k%NS];
+const $=id=>document.getElementById(id);
+const sgn=v=>{const r=Math.round(v);return (r>0?'+':r<0?'−':'')+Math.abs(r)};
+let tok={};
+function readTokens(){const cs=getComputedStyle(document.documentElement);
+  for(const n of ['bg','surface','ink','muted','line','accent','fog','wall','cell','o1','o2','o3','o4','s1','s2','s3','s4','s5'])tok[n]=cs.getPropertyValue('--'+n).trim();}
+readTokens();
+
+/* ---------- live world ---------- */
+let seed=3,w,a,m,log=[],playing=!matchMedia('(prefers-reduced-motion: reduce)').matches,speed=12,restart=0,lives=1;
+const cv=$('world'),ctx=cv.getContext('2d');let cs=30;
+function newLife(s,keepMind){seed=s;w=makeWorld(s);a=makeBody(w);if(!keepMind||!m){m=makeMind({});}m.events=[];log=[];
+  if(keepMind){m.seen.fill(-1);m.memObj.fill(-1);m.memWall.fill(0);m.target=-1;}
+  perceive(m,w,a);restart=0;}
+function addLog(msg,hot){log.unshift({t:m.t,msg,hot});if(log.length>7)log.pop();}
+function stepOnce(){
+  if(a.dead)return;
+  const n0=m.events.length;tick(m,w,a);perceive(m,w,a);
+  for(let i=n0;i<m.events.length;i++){const e=m.events[i],nm=kindName(e.kind),fx='energy '+sgn(e.E)+', integrity '+sgn(e.I);
+    if(e.note==='first')addLog('First touch of a '+nm+': '+fx+'.');
+    else if(e.note==='surprise')addLog('A '+nm+' did not do what it expected: '+fx+'.',true);
+    if(e.doubted.length){const names=[...new Set(e.doubted)].map(k=>k[0]==='c'?COL[+k[1]]+' things':SHP[+k[1]]+'s');
+      addLog('A rule it relied on about '+names.join(' and ')+' has broken. Older knowledge is now only rumour.',true);}
+  }
+  if(m.events.length>200)m.events.length=0;
+  if(a.dead){addLog(a.E<=0?'It starved.':'Its injuries were too much.',true);restart=performance.now()+3500;}
+}
+function size(){const wd=cv.clientWidth;cs=Math.max(8,Math.floor(wd/W));const dpr=window.devicePixelRatio||1;
+  cv.width=W*cs*dpr;cv.height=H*cs*dpr;cv.style.height=(H*cs*cv.clientWidth/(W*cs))+'px';ctx.setTransform(dpr,0,0,dpr,0,0);}
+function glyph(c2,k,cx,cy,r){const c=Math.floor(k/NS),s=k%NS;c2.fillStyle=tok['o'+(c+1)];c2.beginPath();
+  if(s===0)c2.arc(cx,cy,r,0,7);else if(s===1)c2.rect(cx-r*.88,cy-r*.88,r*1.76,r*1.76);
+  else{c2.moveTo(cx,cy-r*1.05);c2.lineTo(cx+r*1.05,cy+r*.85);c2.lineTo(cx-r*1.05,cy+r*.85);c2.closePath();}
+  c2.fill();}
+function draw(){
+  ctx.fillStyle=tok.cell;ctx.fillRect(0,0,W*cs,H*cs);
+  ctx.strokeStyle=tok.line;ctx.lineWidth=1;ctx.beginPath();
+  for(let x=1;x<W;x++){ctx.moveTo(x*cs+.5,0);ctx.lineTo(x*cs+.5,H*cs);}
+  for(let y=1;y<H;y++){ctx.moveTo(0,y*cs+.5);ctx.lineTo(W*cs,y*cs+.5);}ctx.stroke();
+  for(let i=0;i<N;i++){const x=i%W,y=(i-x)/W;
+    if(w.wall[i]){ctx.fillStyle=tok.wall;ctx.fillRect(x*cs+1,y*cs+1,cs-1,cs-1);}
+    else if(w.obj[i]>=0)glyph(ctx,w.obj[i],x*cs+cs/2+.5,y*cs+cs/2+.5,cs*.3);
+    if(m.seen[i]<0){ctx.globalAlpha=.72;ctx.fillStyle=tok.fog;ctx.fillRect(x*cs,y*cs,cs+1,cs+1);ctx.globalAlpha=1;}
+  }
+  ctx.strokeStyle=tok.muted;ctx.setLineDash([3,3]);
+  const x0=Math.max(0,a.x-VIS),y0=Math.max(0,a.y-VIS),x1=Math.min(W-1,a.x+VIS),y1=Math.min(H-1,a.y+VIS);
+  ctx.strokeRect(x0*cs+.5,y0*cs+.5,(x1-x0+1)*cs,(y1-y0+1)*cs);ctx.setLineDash([]);
+  if(m.target>=0&&!a.dead){const tx=m.target%W,ty=(m.target-tx)/W;ctx.strokeStyle=tok.accent;ctx.lineWidth=2;
+    ctx.strokeRect(tx*cs+2.5,ty*cs+2.5,cs-4,cs-4);ctx.lineWidth=1;}
+  const ax=a.x*cs+cs/2+.5,ay=a.y*cs+cs/2+.5;
+  ctx.fillStyle=tok.surface;ctx.beginPath();ctx.arc(ax,ay,cs*.4,0,7);ctx.fill();
+  ctx.fillStyle=a.dead?tok.muted:tok.ink;ctx.beginPath();ctx.arc(ax,ay,cs*.3,0,7);ctx.fill();
+}
+function glyphSvg(k){const c=Math.floor(k/NS),s=k%NS,f='fill="var(--o'+(c+1)+')"';
+  return '<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">'+(s===0?'<circle cx="12" cy="12" r="9" '+f+'/>':s===1?'<rect x="4" y="4" width="16" height="16" '+f+'/>':'<path d="M12 2.5 22 20H2Z" '+f+'/>')+'</svg>';}
+function val(v){const r=Math.round(v);return '<b class="'+(r>0?'pos':r<0?'neg':'')+'">'+sgn(v)+'</b>';}
+function panel(){
+  const set=(g,n,v)=>{$(g).style.width=v+'%';$(g).className='fill'+(v<25?' low':'');$(n).textContent=Math.round(v);};
+  set('gE','nE',a.E);set('gI','nI',a.I);
+  let u=0;const showT=$('truth').checked;let html='';
+  for(let k=0;k<NK;k++){const p=predict(m,k);u+=p.u;const kr=m.rec['k'+k],tried=kr&&(kr[0].n>0||kr[1].n>0);
+    const st=tried?'Touched':(p.u<0.7?'Inferred':'Unknown'),e=effect(w,k);
+    html+='<div class="kind">'+glyphSvg(k)+'<span class="nm">'+kindName(k)+'</span><div class="vals"><span>energy '+val(p.E)+'</span><span>integrity '+val(p.I)+'</span>'+
+      (showT?'<span class="truth">truth '+sgn(e.E)+' / '+sgn(e.I)+'</span>':'')+'</div><div class="cert"><i style="width:'+Math.round((1-p.u)*100)+'%"></i></div><div class="state">'+st+'</div></div>';}
+  $('beliefs').innerHTML=html;
+  u=u/NK*100;$('gU').style.width=u+'%';$('gU').className='fill';$('nU').textContent=Math.round(u)+'%';
+  const it=m.intent;let s;
+  if(a.dead)s='<span class="pill dead">Dead</span>It lived '+m.t.toLocaleString()+' steps. A new life with a blank mind starts in a moment.';
+  else if(it.type==='eat'){const p=predict(m,it.kind);s='<span class="pill">Goal</span>Heading for a <b>'+kindName(it.kind)+'</b>. It expects energy '+sgn(p.E)+', integrity '+sgn(p.I)+'.';}
+  else if(it.type==='test')s='<span class="pill">Goal</span>Trying a <b>'+kindName(it.kind)+'</b> to find out what it does.';
+  else if(it.type==='explore')s='<span class="pill">Goal</span>Exploring ground it has never seen.';
+  else if(it.type==='patrol')s='<span class="pill">Goal</span>Re-checking a place it has not looked at for a while.';
+  else s='<span class="pill">Resting</span>Nothing is worth the energy right now.';
+  $('intent').innerHTML=s;
+  $('log').innerHTML=log.length?log.map(l=>'<li class="'+(l.hot?'hot':'')+'"><span class="t">'+l.t+'</span><span class="m">'+l.msg+'</span></li>').join(''):'<li><span class="t"></span><span class="m" style="color:var(--muted)">Nothing yet.</span></li>';
+  const nrec=Object.keys(m.rec).length*8;
+  $('foot').textContent='Life '+lives+' · world '+seed+' · step '+m.t.toLocaleString()+' · '+nrec+' numbers of belief';
+  $('memline').textContent='Learned state right now: '+nrec+' numbers of belief plus a '+N+'-cell map of what it last saw where.';
+}
+let acc=0,last=0,frame=0;
+function loop(ts){
+  if(!last)last=ts;const dt=Math.min(100,ts-last);last=ts;
+  if(a.dead&&restart&&ts>=restart){lives++;newLife(seed+1,false);}
+  if(playing&&!a.dead){acc+=dt*speed/1000;let n=Math.floor(acc);acc-=n;if(n>40)n=40;while(n-->0&&!a.dead)stepOnce();}
+  if(frame++%60===0)readTokens();
+  draw();if(frame%4===0)panel();
+  requestAnimationFrame(loop);
+}
+$('play').onclick=()=>{playing=!playing;$('play').textContent=playing?'Pause':'Play';};
+$('play').textContent=playing?'Pause':'Play';
+$('step').onclick=()=>{playing=false;$('play').textContent='Play';stepOnce();panel();};
+$('speed').onchange=e=>{speed=+e.target.value;};
+$('shift').onclick=()=>{setRules(w);addLog('You changed the hidden rules. It has not been told.',true);panel();};
+$('neww').onclick=()=>{lives++;newLife(seed+1,true);addLog('Moved to a new world with new rules, memory of the old rules intact.',true);panel();};
+$('wipe').onclick=()=>{m=makeMind({});m.events=[];perceive(m,w,a);log=[];addLog('Memory wiped. It knows nothing again.',true);panel();};
+$('truth').onchange=panel;
+cv.addEventListener('click',e=>{const r=cv.getBoundingClientRect(),x=Math.floor((e.clientX-r.left)/r.width*W),y=Math.floor((e.clientY-r.top)/r.height*H);
+  if(x<0||y<0||x>=W||y>=H)return;const i=y*W+x;if(i===a.y*W+a.x)return;
+  if(w.wall[i])w.wall[i]=0;else{w.wall[i]=1;w.obj[i]=-1;}flood(w,a.y*W+a.x);});
+addEventListener('resize',size);
+newLife(seed,false);size();panel();requestAnimationFrame(loop);
+
+/* ---------- experiment ---------- */
+const SEEDS=40,FIRST=101,HZ=3000,SHIFT=1500;
+let results=null,running=false;
+$('legend').innerHTML=AGENTS.map((g,i)=>'<span><i style="background:var(--s'+(i+1)+')"></i>'+g.name+'</span>').join('');
+function runExperiment(){
+  if(running)return;running=true;results=AGENTS.map(()=>[]);
+  let s=0;
+  (function chunk(){
+    const t0=performance.now();
+    while(s<SEEDS&&performance.now()-t0<30){AGENTS.forEach((g,i)=>results[i].push(runLife(FIRST+s,g,HZ,SHIFT)));s++;}
+    $('prog').textContent=s<SEEDS?'Running world '+s+' of '+SEEDS+'…':SEEDS+' worlds done';
+    chart();table();
+    if(s<SEEDS)setTimeout(chunk,0);else running=false;
+  })();
+}
+const X0=46,X1=600,Y0=34,Y1=276;
+const px=t=>X0+(X1-X0)*t/HZ,py=p=>Y1-(Y1-Y0)*p/100;
+function aliveAt(v,t){let c=0;for(const x of v)if(x>t)c++;return v.length?100*c/v.length:100;}
+function chart(){
+  let h='';
+  for(const p of [0,25,50,75,100])h+='<line x1="'+X0+'" x2="'+X1+'" y1="'+py(p)+'" y2="'+py(p)+'" stroke="var(--line)"/><text x="'+(X0-8)+'" y="'+(py(p)+4)+'" text-anchor="end" font-size="11" fill="var(--muted)">'+p+'%</text>';
+  for(const t of [0,500,1000,1500,2000,2500,3000])h+='<text x="'+px(t)+'" y="'+(Y1+18)+'" text-anchor="middle" font-size="11" fill="var(--muted)">'+t.toLocaleString()+'</text>';
+  h+='<text x="'+((X0+X1)/2)+'" y="'+(Y1+38)+'" text-anchor="middle" font-size="11.5" fill="var(--muted)">step</text>';
+  h+='<line x1="'+px(SHIFT)+'" x2="'+px(SHIFT)+'" y1="'+Y0+'" y2="'+Y1+'" stroke="var(--muted)" stroke-dasharray="4 4"/><text x="'+(px(SHIFT)+6)+'" y="'+(Y0+12)+'" font-size="11.5" fill="var(--muted)">hidden rules change</text>';
+  const ends=[];
+  results.forEach((v,i)=>{
+    const d=v.filter(x=>x<HZ).sort((p,q)=>p-q);let n=v.length,al=n,path='M'+px(0)+' '+py(100);
+    for(const t of d){path+='H'+px(t).toFixed(1);al--;path+='V'+py(100*al/n).toFixed(1);}
+    const fin=100*al/Math.max(1,n);
+    if(al>0){path+='H'+px(HZ);ends.push({i,fin,y:py(fin)});}
+    h+='<path d="'+path+'" fill="none" stroke="var(--s'+(i+1)+')" stroke-width="2" stroke-linejoin="round"/>';
+    if(al>0)h+='<circle cx="'+px(HZ)+'" cy="'+py(fin)+'" r="4" fill="var(--s'+(i+1)+')" stroke="var(--surface)" stroke-width="2"/>';
+  });
+  ends.sort((p,q)=>p.y-q.y);for(let j=1;j<ends.length;j++)if(ends[j].y-ends[j-1].y<15)ends[j].y=ends[j-1].y+15;
+  const short=['Lodestone','No generalising','No dissent','Nearest thing','Random walk'];
+  for(const e of ends)h+='<text x="'+(X1+10)+'" y="'+(e.y+4)+'" font-size="12" fill="var(--ink)">'+short[e.i]+' <tspan font-family="var(--mono)" fill="var(--muted)">'+Math.round(e.fin)+'%</tspan></text>';
+  h+='<line id="cross" x1="0" x2="0" y1="'+Y0+'" y2="'+Y1+'" stroke="var(--ink)" stroke-width="1" visibility="hidden"/>';
+  h+='<text x="'+X0+'" y="'+(Y0-18)+'" font-size="11.5" fill="var(--muted)">worlds in which the agent is still alive</text>';
+  h+='<rect id="hit" x="'+X0+'" y="'+Y0+'" width="'+(X1-X0)+'" height="'+(Y1-Y0)+'" fill="transparent"/>';
+  $('chart').innerHTML=h;
+}
+function table(){
+  $('tbody').innerHTML=AGENTS.map((g,i)=>{const v=results[i].slice().sort((p,q)=>p-q),n=v.length;if(!n)return'';
+    const med=n%2?v[(n-1)/2]:Math.round((v[n/2-1]+v[n/2])/2);
+    return '<tr><td><i style="background:var(--s'+(i+1)+')"></i>'+g.name+'</td><td class="n">'+Math.round(aliveAt(v,SHIFT-1))+'%</td><td class="n">'+Math.round(aliveAt(v,HZ-1))+'%</td><td class="n">'+(med>=HZ?'3,000+':med.toLocaleString())+'</td></tr>';}).join('');
+}
+const svg=$('chart'),tip=$('tip');
+svg.addEventListener('pointermove',e=>{
+  if(!results||!results[0].length)return;
+  const r=svg.getBoundingClientRect(),sx=(e.clientX-r.left)/r.width*760;
+  if(sx<X0||sx>X1){tip.style.display='none';const c=$('cross');if(c)c.setAttribute('visibility','hidden');return;}
+  const t=Math.round((sx-X0)/(X1-X0)*HZ),c=$('cross');c.setAttribute('x1',sx);c.setAttribute('x2',sx);c.setAttribute('visibility','visible');
+  tip.innerHTML='<div style="color:var(--muted);margin-bottom:4px">step '+t.toLocaleString()+'</div>'+AGENTS.map((g,i)=>'<div><span><i style="background:var(--s'+(i+1)+')"></i>'+g.name+'</span><b>'+Math.round(aliveAt(results[i],Math.min(t,HZ-1)))+'%</b></div>').join('');
+  tip.style.display='block';
+  const wrap=svg.parentElement.getBoundingClientRect();let lx=e.clientX-wrap.left+svg.parentElement.scrollLeft+14;
+  if(lx+tip.offsetWidth>svg.parentElement.scrollLeft+wrap.width)lx-=tip.offsetWidth+28;
+  tip.style.left=Math.max(0,lx)+'px';tip.style.top=Math.max(0,e.clientY-wrap.top-20)+'px';
+});
+svg.addEventListener('pointerleave',()=>{tip.style.display='none';const c=$('cross');if(c)c.setAttribute('visibility','hidden');});
+$('rerun').onclick=runExperiment;
+setTimeout(runExperiment,400);
+})();
+</script>
+</body>
+</html>
