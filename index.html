@@ -7,70 +7,132 @@
     <link rel="stylesheet" href="/src/app/style.css" />
   </head>
   <body>
-    <canvas id="view"></canvas>
     <div id="loading">waking up…</div>
 
     <header id="top">
-      <div class="brand">Consciousness Simulation</div>
-      <nav id="cams">
-        <button data-cam="eyes" title="1">Its eyes</button>
-        <button data-cam="follow" title="2">Follow it</button>
-        <button data-cam="fp" title="3">You · 1st</button>
-        <button data-cam="tp" title="4">You · 3rd</button>
-        <button data-cam="free" title="5">Free</button>
-      </nav>
-      <div id="clock"></div>
-      <div id="speed">
-        <button id="pause" title="P">❚❚</button>
-        <button id="slower" title="[">−</button>
-        <span id="scale">1×</span>
-        <button id="faster" title="]">+</button>
+      <div class="brand" title="Consciousness Simulation"><span class="dot"></span><span class="brandText">Consciousness Simulation</span></div>
+
+      <label class="field" title="Who to watch">
+        <span>Watching</span>
+        <select id="subject"></select>
+      </label>
+
+      <div class="seg" id="cams" title="Main view (1–5)">
+        <button data-cam="follow" title="2 · orbit the subject">Follow</button>
+        <button data-cam="eyes" title="1 · through the subject's eyes">Its eyes</button>
+        <button data-cam="free" title="5 · fly freely">Free</button>
+        <button data-cam="fp" title="3 · you, first person">You 1st</button>
+        <button data-cam="tp" title="4 · you, third person">You 3rd</button>
       </div>
+
+      <div class="seg" id="layouts" title="Layout (L)">
+        <button data-layout="single" title="One view">▢</button>
+        <button data-layout="split" title="Side by side">◫</button>
+        <button data-layout="pip" title="Picture in picture">⧉</button>
+      </div>
+
+      <label class="field" id="secondWrap" title="The second view">
+        <span>Second</span>
+        <select id="second">
+          <option value="eyes">Its eyes</option>
+          <option value="follow">Follow</option>
+          <option value="free">Free</option>
+          <option value="fp">You 1st</option>
+        </select>
+      </label>
+
+      <button id="overlayBtn" class="toggle" title="O · show what its eyes are measuring on the eye view">◎ Measure</button>
+
+      <div id="clock"></div>
     </header>
 
-    <aside id="stream">
-      <h2>Stream of thought</h2>
-      <ol id="thoughts"></ol>
-    </aside>
+    <div id="body">
+      <aside id="stream" class="panel">
+        <header>
+          <h2>Stream of thought</h2>
+          <button class="collapse" data-for="stream" title="Minimize">‹</button>
+        </header>
+        <div class="rail-label">Thoughts</div>
+        <ol id="thoughts"></ol>
+      </aside>
 
-    <aside id="mind">
-      <h2>Mind</h2>
-      <div class="row"><span class="k">aware of</span><span id="focus" class="v">—</span></div>
-      <div class="row"><span class="k">doing</span><span id="behavior" class="v">—</span></div>
-      <div class="row"><span class="k">eyes</span><span id="gaze" class="v">—</span></div>
-      <div id="interest" class="bar"><i></i></div>
-      <h3>Drives</h3>
-      <div id="drives"></div>
-      <h3>Feelings</h3>
-      <div id="feelings"></div>
-      <h3>Body</h3>
-      <div id="bodystate"></div>
-      <h3>Drawing its eye</h3>
-      <ol id="salience"></ol>
-      <h3>Discovered <span id="disc"></span></h3>
-      <div id="named"></div>
-      <button id="kbtn">Knowledge graph (K)</button>
-    </aside>
+      <main id="stage">
+        <canvas id="view"></canvas>
+        <canvas id="overlay"></canvas>
+        <div id="paneLabels"></div>
+        <div id="reviewBadge" hidden>Reviewing the past · the world is paused · <button id="toLive">Back to live</button></div>
+        <form id="talk">
+          <input id="say" autocomplete="off" placeholder="Say something as the visitor… (Enter)" />
+        </form>
+      </main>
 
-    <section id="inspector" hidden>
+      <aside id="mind" class="panel">
+        <header>
+          <h2 id="mindTitle">Mind</h2>
+          <button class="collapse" data-for="mind" title="Minimize">›</button>
+        </header>
+        <div class="rail-label">Mind</div>
+        <div id="mindBody">
+          <div class="row"><span class="k">aware of</span><span id="focus" class="v">—</span></div>
+          <div class="row"><span class="k">doing</span><span id="behavior" class="v">—</span></div>
+          <div class="row"><span class="k">eyes</span><span id="gaze" class="v">—</span></div>
+          <div id="interest" class="bar"><i></i></div>
+          <details open><summary>Drives</summary><div id="drives"></div></details>
+          <details open><summary>Feelings</summary><div id="feelings"></div></details>
+          <details open><summary>Body</summary><div id="bodystate"></div></details>
+          <details open><summary>Drawing its eye</summary><ol id="salience"></ol></details>
+          <details open><summary>Discovered <span id="disc"></span></summary><div id="named"></div></details>
+          <button id="kbtn">Knowledge graph (K)</button>
+        </div>
+        <div id="noMind" hidden></div>
+      </aside>
+    </div>
+
+    <footer id="timeline">
+      <div class="transport">
+        <button id="back10" title="Back 10 s (←)">⟲ 10s</button>
+        <button id="play" title="Play / pause (P)">❚❚</button>
+        <button id="fwd10" title="Forward 10 s (→)">10s ⟳</button>
+      </div>
+      <div class="scrub">
+        <input id="scrubber" type="range" min="0" max="1000" value="1000" step="1" />
+        <div class="ticks"><span id="tStart"></span><span id="tNow"></span><span id="tEnd"></span></div>
+      </div>
+      <button id="live" class="live on" title="Jump to now">● LIVE</button>
+      <div class="speed">
+        <button id="slower" title="Slower ([)">−</button>
+        <span id="scale">1×</span>
+        <button id="faster" title="Faster (])">+</button>
+      </div>
+      <button id="helpBtn" title="Keys">?</button>
+    </footer>
+
+    <section id="inspector" class="popup" hidden>
       <header><span id="insTitle"></span><button id="insClose">×</button></header>
       <p class="legend"><span class="m">measured by the creature</span> · <span class="u">not yet noticed</span></p>
       <ul id="insTree"></ul>
     </section>
 
-    <section id="knowledge" hidden>
+    <section id="knowledge" class="popup" hidden>
       <header><span>What it knows</span><button id="kClose">×</button></header>
       <ul id="kList"></ul>
     </section>
 
-    <form id="talk">
-      <input id="say" autocomplete="off" placeholder="Say something as the visitor… (Enter)" />
-    </form>
-    <div id="hint">
-      <b>1–5</b> cameras · <b>WASD</b> move · <b>mouse</b> look (click to lock) · <b>Space</b> jump · <b>E</b> pick up/drop · <b>F</b> throw ·
-      <b>Enter</b> talk · <b>click</b> inspect · <b>V</b> its view inset · <b>R</b> raw eye motion · <b>H</b> hide panels
-    </div>
-    <div id="pipLabel">through its eyes</div>
+    <section id="help" class="popup" hidden>
+      <header><span>Keys</span><button id="helpClose">×</button></header>
+      <ul class="keys">
+        <li><b>1–5</b> main view: its eyes, follow, you 1st, you 3rd, free</li>
+        <li><b>L</b> layout: one view, side by side, picture in picture</li>
+        <li><b>O</b> measurement overlay on the eye view</li>
+        <li><b>Tab</b> watch the next creature</li>
+        <li><b>P</b> play / pause · <b>← →</b> 10 s back / forward · <b>[ ]</b> speed</li>
+        <li><b>WASD</b> move (you, or the free camera) · <b>Space</b> jump · <b>Shift</b> run</li>
+        <li><b>E</b> pick up / drop · <b>F</b> throw · <b>Enter</b> talk</li>
+        <li><b>drag</b> orbit / look · <b>scroll</b> zoom · <b>click</b> inspect anything</li>
+        <li><b>K</b> knowledge graph · <b>R</b> raw eye motion · <b>H</b> hide panels</li>
+      </ul>
+    </section>
+
     <script type="module" src="/src/app/main.ts"></script>
   </body>
 </html>

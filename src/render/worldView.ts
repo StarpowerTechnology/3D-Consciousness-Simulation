@@ -728,13 +728,20 @@ export class WorldView {
       this.savedFog = { color: fog.color.clone(), density: fog.density };
       const day = this.world.sun.ambient;
       fog.color.setRGB(0.05 + 0.15 * day, 0.25 + 0.3 * day, 0.28 + 0.3 * day);
-      fog.density = 3.2;
+      fog.density = 4.5;
       (this.water.material as THREE.MeshPhysicalMaterial).opacity = 0.55;
+      // murky water all around instead of a clear sky
+      this.sky.visible = false;
+      this.stars.visible = false;
+      this.scene.background = fog.color.clone();
     } else if (!on && this.savedFog) {
       fog.color.copy(this.savedFog.color);
       fog.density = this.savedFog.density;
       this.savedFog = null;
       (this.water.material as THREE.MeshPhysicalMaterial).opacity = 0.8;
+      this.sky.visible = true;
+      this.stars.visible = true;
+      this.scene.background = null;
     }
   }
 

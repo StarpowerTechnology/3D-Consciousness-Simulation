@@ -3,7 +3,7 @@
 A system designed to exhibit the behavior of consciousness within a 3d environment.
 Designed by Starpower
 
-A small creature lives in a 16 m patch of nature. It looks around, locks its eyes on things, gets curious, names what it discovers, learns what is food and what hurts, remembers where things are, and talks about what it has actually seen. You enter the world as a second creature and talk to it by being near it.
+A small creature lives in a 40 m world of meadows and forest, starting in a 16 m clearing. It looks around, locks its eyes on things, gets curious, names what it discovers, learns what is food and what hurts, remembers where things are, and talks about what it has actually seen. You enter the world as a second creature and talk to it by being near it.
 
 The full design is in [BLUEPRINT.md](BLUEPRINT.md). This is the MVP prototype described there.
 
@@ -19,21 +19,30 @@ npm run dev
 
 Then open http://localhost:5173. Everything runs in the browser; there is nothing else to install.
 
-### Controls
+### Watching it
+
+- **Watching:** pick who to watch: the creature, you (the visitor), any ant or butterfly. `Tab` cycles. Clicking an ant or butterfly in the view starts watching it.
+- **Views:** *Follow* (orbit it), *Its eyes* (see through its eyes, sharp where it looks and blurred at the edges), *Free* (fly anywhere), *You 1st / 3rd* (walk as the visitor).
+- **Layout:** one view, side by side, or picture in picture, with any second view you choose.
+- **◎ Measure:** on the eye view, tracking brackets on everything its eyes are measuring, labelled with its own word for it (or `?` and how it would describe it), how clearly it sees it, how far, and how strongly it pulls the eye. What it is locked onto is highlighted.
+- **Timeline:** the last 8 minutes are recorded. Drag the bar or press `←` to go back; the world pauses while you review the past, and the thought stream and Mind panel rewind with it. Play to replay; when it catches up it carries on live. *LIVE* jumps to now.
+- **Panels:** the thought stream and the Mind panel minimize to slim rails (`‹ ›`), and remember how you left them.
+
+### Keys
 
 | Key | Does |
 |---|---|
-| `1` | **Its eyes**: see through the creature's eyes, sharp where it looks, blurred and greyer at the edges |
-| `2` | **Follow it**: orbit the creature (drag, scroll to zoom) |
-| `3` / `4` | **You**, first or third person (click to lock the mouse) |
-| `5` | **Free** observer camera (drag to look, WASD, Q/E down/up, Shift faster) |
-| `WASD`, `Space`, `Shift` | Move, jump and run as the visitor |
+| `1`–`5` | Main view: its eyes, follow, you 1st, you 3rd, free |
+| `L` | Layout: one view, side by side, picture in picture |
+| `O` | Measurement overlay on the eye view |
+| `Tab` | Watch the next creature |
+| `P`, `←` `→`, `[` `]` | Play/pause, 10 s back/forward, speed |
+| `WASD`, `Space`, `Shift` | Move (you, or the free camera), jump, run |
 | `E` / `F` | Pick up or drop a leaf or nut / throw it |
 | `Enter` | Talk. Your words are a sound at your position: it only hears you when you are close enough |
 | click | Inspect anything: its part tree, with what the creature has measured highlighted |
 | `K` | What the creature knows (its knowledge graph, with the source of every fact) |
-| `V` / `R` / `H` | Toggle the eye-view inset / raw saccades / hide panels |
-| `P`, `[`, `]` | Pause, slower, faster |
+| `R` / `H` / `?` | Raw saccades / hide panels / all keys |
 
 ### Things to try
 
