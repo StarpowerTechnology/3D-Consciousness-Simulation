@@ -41,7 +41,7 @@ export class World {
   private nextPondSound = 0;
   events: { t: number; kind: string; node?: string; detail?: string }[] = [];
 
-  constructor(readonly ont: Ontology, seed = 1) {
+  constructor(readonly ont: Ontology, readonly seed = 1) {
     this.rng = new Rng(seed);
     this.physics.addTerrain(this.terrain.positions, this.terrain.indices, 'ground');
     spawnWorld(this);
@@ -88,18 +88,36 @@ export class World {
   }
 
   private flutterCache: NodeInst[] = [];
-  private flutterCount = -1;
+  private flutterVersion = -1;
+  private flutterNear = new Uint8Array(0);
+  /** Places where something can perceive the world (the creatures' heads). Leaves near them flutter every step. */
+  observers: V3[] = [];
 
   private updateFlutter() {
-    if (this.flutterCount !== this.nodes.byId.size) {
+    if (this.flutterVersion !== this.nodes.version) {
       this.flutterCache = [...this.nodes.byId.values()].filter((n) => n.motion === 'flutter');
-      this.flutterCount = this.nodes.byId.size;
+      this.flutterVersion = this.nodes.version;
+      this.flutterNear = new Uint8Array(this.flutterCache.length).fill(1);
+    }
+    // level of detail: leaves within 10 m of an observer are exact every step; farther ones step every 4th frame,
+    // which no sense can resolve at that distance (and the renderer can't show)
+    const near2 = 100, obs = this.observers, slot = this.frame & 3;
+    if (this.frame % 30 === 0 && obs.length) {
+      // which leaves are near an observer: refreshed twice a second (with 2 m of slack in the radius)
+      for (let li = 0; li < this.flutterCache.length; li++) {
+        const b = this.flutterCache[li].basePos;
+        let near = 0;
+        for (const o of obs) { const dx = b.x - o.x, dz = b.z - o.z; if (dx * dx + dz * dz < near2 * 1.44) { near = 1; break; } }
+        this.flutterNear[li] = near;
+      }
     }
     // allocation-free: this runs for thousands of leaves at 60 Hz
     const w = this.wind, t = this.t;
     const g = 0.3 + 0.7 * w.gust, base = 0.15 + w.strength * 0.85, lean = 0.4 * w.strength;
-    for (const n of this.flutterCache) {
+    for (let li = 0; li < this.flutterCache.length; li++) {
+      const n = this.flutterCache[li];
       if (n.removed) continue;
+      if ((li & 3) !== slot && !this.flutterNear[li]) continue;
       const a = (n.render.flutterAmp ?? 0.01) * base;
       const om = 4.5 + (n.phase % 1) * 3;
       const ph1 = om * t + n.phase * 6.283, ph2 = 1.7 * om * t + n.phase * 3.1;
@@ -255,7 +273,9 @@ export class World {
     let l = this.sun.ambient;
     let shade = 1;
     for (const c of this.canopies) {
-      const d = Math.hypot(p.x - c.x, p.z - c.z);
+      const dx = p.x - c.x, dz = p.z - c.z;
+      if (dx > c.r || dx < -c.r || dz > c.r || dz < -c.r) continue; // cheap reject, same result
+      const d = Math.hypot(dx, dz);
       if (d < c.r && p.y < c.y0 + 0.5) shade = Math.min(shade, 1 - c.shade * (1 - (d / c.r) ** 2));
     }
     if (this.inShelter(p)) shade = Math.min(shade, 0.2);
@@ -284,7 +304,9 @@ export class World {
     const w = this.wind;
     for (const s of this.smellSources) {
       if (s.node.removed) continue;
-      const d = dist(p, s.node.pos);
+      const lim = s.reach * 4, q = s.node.pos;
+      if (Math.abs(p.x - q.x) > lim || Math.abs(p.z - q.z) > lim) continue; // cheap reject, same result
+      const d = dist(p, q);
       if (d > s.reach * 4) continue;
       const toMe = norm(sub(p, s.node.pos));
       const downwind = Math.max(0, toMe.x * w.dir.x + toMe.z * w.dir.z) * w.strength;

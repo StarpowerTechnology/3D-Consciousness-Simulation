@@ -29,6 +29,8 @@ export interface NodeInst {
 
 export class NodeRegistry {
   readonly byId = new Map<string, NodeInst>();
+  /** Bumped on every create/delete, so caches over the node set know when to rebuild. */
+  version = 0;
   readonly tops: NodeInst[] = [];
   private counters = new Map<string, number>();
 
@@ -62,11 +64,13 @@ export class NodeRegistry {
     if (parent) parent.children.push(node);
     else this.tops.push(node);
     this.byId.set(id, node);
+    this.version++;
     return node;
   }
 
   /** Remove a node and its whole subtree from the registry. */
   delete(node: NodeInst): void {
+    this.version++;
     const walk = (n: NodeInst) => {
       n.children.forEach(walk);
       this.byId.delete(n.id);

@@ -56,6 +56,7 @@ export class Simulation {
   }
 
   step() {
+    this.world.observers = [this.creature.pose.head, this.player.pose.head];
     this.world.step(FIXED_DT);
     this.mindAcc += FIXED_DT;
     if (this.mindAcc >= 1 / MIND_HZ) {

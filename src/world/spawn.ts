@@ -4,9 +4,9 @@ import type { World } from './world';
 import type { NodeInst } from './nodes';
 import { partSpec } from './nodes';
 import { AntColony, Butterflies } from './agents';
-import { POND, WATER_LEVEL, surfaceAt, WORLD_SIZE } from './terrain';
+import { POND, WATER_LEVEL, surfaceAt, WORLD_SIZE, INNER_SIZE } from './terrain';
 import { add, dirFromYawPitch, norm, scale, v3, type V3 } from '../util/vec';
-import type { Rng } from '../util/rng';
+import { Rng } from '../util/rng';
 
 const GOLDEN = 2.39996;
 
@@ -46,8 +46,8 @@ export function spawnWorld(w: World) {
   log(w, { x: -2.65, z: 2.05 }, 0.45);
 
   // grass patches on grassy ground, leaving the clearing short
-  for (let x = -WORLD_SIZE / 2 + 0.6; x < WORLD_SIZE / 2 - 0.6; x += 0.85)
-    for (let z = -WORLD_SIZE / 2 + 0.6; z < WORLD_SIZE / 2 - 0.6; z += 0.85) {
+  for (let x = -INNER_SIZE / 2 + 0.6; x < INNER_SIZE / 2 - 0.6; x += 0.85)
+    for (let z = -INNER_SIZE / 2 + 0.6; z < INNER_SIZE / 2 - 0.6; z += 0.85) {
       const px = x + rng.range(-0.3, 0.3), pz = z + rng.range(-0.3, 0.3);
       if (surfaceAt(px, pz) !== 'grass') continue;
       if (Math.hypot(px, pz) < 0.9) continue;
@@ -63,11 +63,66 @@ export function spawnWorld(w: World) {
   w.ants = new AntColony(w, { x: 1.0, y: 0, z: 0.6 }, rng.fork(7));
   w.butterflies = new Butterflies(w, rng.fork(9));
   visitorNode(w, { x: 0.2, z: -2.2 });
+
+  // the wider world: drawn from its own random stream, so the clearing above is unchanged by it
+  spawnOuter(w, new Rng((w.seed * 2654435761 ^ 0x5bd1e995) >>> 0));
+}
+
+/** Forest, meadows and flower fields around the original clearing. */
+function spawnOuter(w: World, rng: Rng) {
+  const g = (x: number, z: number) => w.groundY(x, z);
+  const half = WORLD_SIZE / 2 - 0.8;
+  const taken: { x: number; z: number; r: number }[] = [];
+  const free = (x: number, z: number, r: number) => {
+    if (Math.max(Math.abs(x), Math.abs(z)) > half) return false;
+    if (Math.max(Math.abs(x), Math.abs(z)) < INNER_SIZE / 2 + r * 0.5) return false;
+    if (Math.hypot(x - POND.x, z - POND.z) < POND.r * 1.4 + r) return false;
+    return taken.every((t) => Math.hypot(t.x - x, t.z - z) > t.r + r);
+  };
+  const place = (n: number, r: number, f: (x: number, z: number) => void, tries = 40) => {
+    for (let i = 0; i < n; i++)
+      for (let k = 0; k < tries; k++) {
+        const x = rng.range(-half, half), z = rng.range(-half, half);
+        if (!free(x, z, r)) continue;
+        taken.push({ x, z, r });
+        f(x, z);
+        break;
+      }
+  };
+  // a ring of big trees thickening toward the edge: a forest wall around the meadows
+  place(55, 1.6, (x, z) => tree(w, rng, { x, y: g(x, z), z }, rng.range(4.2, 6.8), true, rng.chance(0.15), 0.15));
+  place(30, 0.6, (x, z) => tree(w, rng, { x, y: g(x, z), z }, rng.range(0.7, 1.1), false, false, 0.4));
+  place(12, 0.7, (x, z) => bush(w, rng, { x, y: g(x, z), z }));
+  // flower fields
+  place(9, 1.0, (cx, cz) => {
+    for (let i = 0; i < 9; i++) {
+      const a = rng.range(0, Math.PI * 2), r = rng.range(0, 0.8);
+      const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+      flower(w, rng, { x, y: g(x, z), z });
+    }
+  });
+  // toadstool rings in the shade
+  place(6, 0.5, (cx, cz) => {
+    for (let i = 0; i < 3; i++) {
+      const x = cx + rng.range(-0.25, 0.25), z = cz + rng.range(-0.25, 0.25);
+      mushroom(w, rng, { x, y: g(x, z), z });
+    }
+  });
+  place(26, 0.5, (x, z) => rock(w, rng, { x, y: g(x, z), z }, rng.range(0.12, 0.6)));
+  // meadow grass, a little sparser than in the clearing
+  for (let x = -half; x < half; x += 1.15)
+    for (let z = -half; z < half; z += 1.15) {
+      const px = x + rng.range(-0.4, 0.4), pz = z + rng.range(-0.4, 0.4);
+      if (Math.max(Math.abs(px), Math.abs(pz)) < INNER_SIZE / 2 - 0.6) continue;
+      if (surfaceAt(px, pz) !== 'grass' && !rng.chance(0.35)) continue;
+      if (Math.hypot(px - POND.x, pz - POND.z) < POND.r * 1.3) continue;
+      grass(w, rng, { x: px, y: g(px, pz), z: pz });
+    }
 }
 
 // ---------------------------------------------------------------- trees
 
-function tree(w: World, rng: Rng, base: V3, H: number, isBig: boolean, nuts: boolean): NodeInst {
+function tree(w: World, rng: Rng, base: V3, H: number, isBig: boolean, nuts: boolean, leafScale = 1): NodeInst {
   const spec = w.spec('tree');
   const trunkH = H * (isBig ? 0.55 : 0.42);
   const r0 = isBig ? 0.1 + H * 0.012 : 0.01 + H * 0.004;
@@ -87,7 +142,7 @@ function tree(w: World, rng: Rng, base: V3, H: number, isBig: boolean, nuts: boo
   const leafSpec = partSpec(brSpec, 'leaf');
   const nutSpec = partSpec(spec, 'nut');
   const nB = isBig ? 9 : 4;
-  const nL = isBig ? 34 : 16;
+  const nL = Math.max(3, Math.round((isBig ? 34 : 16) * leafScale));
   const leafSize = isBig ? 0.09 : 0.055;
   let canopyR = 0;
   for (let i = 0; i < nB; i++) {
@@ -125,7 +180,7 @@ function tree(w: World, rng: Rng, base: V3, H: number, isBig: boolean, nuts: boo
 
 function makeLeaf(w: World, rng: Rng, leafSpec: ReturnType<typeof partSpec>, parent: NodeInst, p: V3, size: number): NodeInst {
   const leaf = w.nodes.create(leafSpec, parent.entity, parent, p, size, { motion: 'flutter', phase: rng.next() });
-  leaf.render = { flutterAmp: size * 0.22 };
+  leaf.render = { flutterAmp: size * 0.22, twist: 0 }; // same shape for every leaf keeps the flutter loop fast
   w.nodes.create(partSpec(leafSpec, 'stem'), parent.entity, leaf, p, size * 0.9);
   w.nodes.create(partSpec(leafSpec, 'veins'), parent.entity, leaf, p, size * 0.6);
   return leaf;

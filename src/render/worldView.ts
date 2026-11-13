@@ -62,8 +62,8 @@ export class WorldView {
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     const cam = this.sun.shadow.camera as THREE.OrthographicCamera;
-    cam.left = cam.bottom = -2.2;
-    cam.right = cam.top = 2.2;
+    cam.left = cam.bottom = -3;
+    cam.right = cam.top = 3;
     cam.near = 0.1;
     cam.far = 40;
     this.sun.shadow.bias = -0.0002;
@@ -162,13 +162,15 @@ export class WorldView {
     };
     this.grassMat = mat;
     const patches = this.world.nodes.tops.filter((n) => n.entity === 'grass');
-    const per = 160;
-    const mesh = new THREE.InstancedMesh(blade, mat, patches.length * per);
+    // full density in the clearing, lighter in the outer meadows
+    const perOf = (n: NodeInst) => (Math.hypot(n.render.base.x, n.render.base.z) < 8 ? 160 : 80);
+    const mesh = new THREE.InstancedMesh(blade, mat, patches.reduce((a, n) => a + perOf(n), 0));
     const r = new Rng(31);
     const col = new THREE.Color();
     let k = 0;
     for (const n of patches) {
       const { base, h, r: R } = n.render;
+      const per = perOf(n);
       for (let i = 0; i < per; i++) {
         const a = r.range(0, Math.PI * 2), d = Math.sqrt(r.next()) * R;
         const x = base.x + Math.cos(a) * d, z = base.z + Math.sin(a) * d;

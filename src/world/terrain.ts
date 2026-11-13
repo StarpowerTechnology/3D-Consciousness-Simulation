@@ -2,7 +2,9 @@
 import { fbm2 } from '../util/rng';
 import { smoothstep } from '../util/vec';
 
-export const WORLD_SIZE = 16; // metres, square, centred on the origin
+export const WORLD_SIZE = 40; // metres, square, centred on the origin
+/** The original clearing: everything inside it is laid out exactly as before; the forest and meadows grow around it. */
+export const INNER_SIZE = 16;
 export const TERRAIN_RES = 0.1; // metres between grid vertices
 export const POND = { x: 3.6, z: -3.0, r: 1.6, depth: 0.22 };
 export const WATER_LEVEL = -0.07;
@@ -12,6 +14,8 @@ export function terrainHeight(x: number, z: number): number {
   // flatten a clearing around the spawn so a 12 cm animal can walk it
   const c = Math.hypot(x, z);
   h *= 0.35 + 0.65 * smoothstep(1.5, 5, c);
+  // rolling hills further out, beyond the original clearing
+  h += smoothstep(8, 15, c) * fbm2(x * 0.07, z * 0.07, 3, 17) * 1.6;
   // raise the edges into low banks
   const e = Math.max(Math.abs(x), Math.abs(z));
   h += smoothstep(WORLD_SIZE / 2 - 2.2, WORLD_SIZE / 2, e) * 0.6;
