@@ -286,6 +286,7 @@ You enter the world as a second creature that you control. There is no chat wind
 - **It is an entity like any other.** It has a part tree in the ontology (head, eyes, ears, body, legs, hands or paws, fur), each part with its own embedding and words, so the creature can look at you, lock its gaze on you, notice your details and name you.
 - **It has a smell signature.** You leave smell in the field like any source. How well the creature smells you depends on distance, wind and the strength of its nose.
 - **Your voice is a sound event** at your position. The creature hears you only within range, more faintly with distance, and muffled behind obstacles. Out of range, it does not hear you at all.
+- **You are physical.** You collide with things, push them, pick them up, carry, drop and throw them, and you can bump into the creature. All of it goes through the same physics and senses as everything else.
 - **You have consequences.** You can bring it food, block its path, startle it or stay calm near it. It learns values about you the same way it learns them about berries and wasps, so it can come to trust you, avoid you, or follow you around.
 
 ---
@@ -840,7 +841,7 @@ Pretrained knowledge still matters, because it is where emergence in conversatio
 **Observation updates expression at two speeds.**
 
 - **Instantly:** memory updates as it observes, and the memory tokens change with it. What it saw a minute ago is already sayable.
-- **Overnight:** during sleep (8.6), the model is lightly fine-tuned on that day's own logged thoughts and conversations, so its phrasing drifts to become its own over time.
+- **Overnight:** the day's thoughts and conversations are logged. Between sessions (or during sleep in headless runs), the offline Python trainer lightly fine-tunes the model on them and the new weights load next time, so its phrasing drifts to become its own over time.
 
 **Safeguards.**
 
@@ -1064,7 +1065,7 @@ Physics is part of the world, not decoration. The same physical properties feed 
 | Light debris | Falling leaves and petals are cheap particles with drag and flutter. A particle becomes a full rigid body only when something interacts with it. |
 | Water | A volume with buoyancy and drag. Objects float or sink by density; the creature gets wet; visual ripples come from contacts. |
 | Wind | One wind field drives forces on light objects, the flutter function for leaves and grass, and smell drift. What it sees moving and where the smell goes always agree. |
-| Contacts | Every contact event goes to the touch sense with force, point and material, and to damage. |
+| Contacts | Every contact event goes to the touch sense with force, point and material, and to damage. It also makes a sound event whose signature comes from the two materials (thud, tap, rustle, splash), so sounds are produced by physics, never placed by hand. |
 | Sleeping | Bodies at rest go to sleep and cost nothing until disturbed. |
 
 **Lazy detail.** Fine detail is materialized only where someone can sense it. Within sense range of the creature or the player, individual leaves, ant legs and pebbles exist as semantic nodes with colliders. Farther away they exist only as a seed and a count, drawn with instancing. Seeds are deterministic, so the leaf it inspected yesterday is the same leaf when it comes back. This is the fractal principle applied to performance.
